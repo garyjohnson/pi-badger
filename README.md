@@ -105,9 +105,9 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 | `excludePatterns` | `string[]` | `[]` | Glob patterns to exclude — keep minimal (only lock/gen files) |
 | `notifyWithoutConfig` | `boolean` | `true` | Show setup notification when no config found |
 | `debug` | `boolean` | `false` | Enable debug mode — log detailed info to `.pi/badger-debug.log` |
-| `checksFast` | `FastCheckEntry[]` | lint, typecheck, test_changed | Fast per-file checks (script only). Short-circuits on first failure. |
-| `checks` | `CheckEntry[]` | (see defaults) | Full test suite (script or prompt) |
-| `release` | `CheckEntry \| null` | (see defaults) | Release step (script or prompt), omit to disable |
+| `checksFast` | `FastCheckEntry[]` | lint, typecheck, test_changed | Fast per-file checks (script or command). Short-circuits on first failure. |
+| `checks` | `CheckEntry[]` | (see defaults) | Full test suite (script, command, or prompt) |
+| `release` | `CheckEntry \| null` | (see defaults) | Release step (script, command, or prompt), omit to disable |
 
 ### FastCheckEntry
 
@@ -120,11 +120,23 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 }
 ```
 
+Or with inline command:
+
+```json
+{
+  "type": "command",
+  "command": "npx eslint $CHANGED_FILES",
+  "fileFilter": ["*.ts", "*.tsx"],
+  "failurePrompt": "Fix the lint issues identified above and continue working."
+}
+```
+
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | `"script"` | Yes | Entry type (always `script` for fast checks) |
-| `path` | `string` | Yes | Path to the check script |
-| `fileFilter` | `string[]` | No | Glob patterns. Only changed files matching these patterns are passed to the script. If no files match, the entry is skipped entirely. Omit to receive all changed files. |
+| `type` | `"script" \| "command"` | Yes | Entry type. `"script"` runs an executable file, `"command"` runs a shell command string. |
+| `path` | `string` | Yes (if `type` is `"script"`) | Path to the check script |
+| `command` | `string` | Yes (if `type` is `"command"`) | Shell command to run. Use `$CHANGED_FILES` to insert changed file paths. |
+| `fileFilter` | `string[]` | No | Glob patterns. Only changed files matching these patterns are passed to the script/command. If no files match, the entry is skipped entirely. Omit to receive all changed files. |
 | `failurePrompt` | `string` | No | Message sent to pi on failure |
 
 `fileFilter` uses [picomatch](https://github.com/micromatch/picomatch) glob patterns. Use it to route specific file types to specific fast checks — e.g., only `*.test.ts` files to the test runner, only `*.ts` files to the linter, only `e2e/**/*.spec.ts` to the e2e runner.
@@ -133,11 +145,46 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 
 **Script entry:**
 
+Runs an executable script file. Changed files are passed as command-line arguments.
+
 ```json
 {
   "type": "script",
   "path": "scripts/check",
   "failurePrompt": "Fix the failures and continue."
+}
+```
+
+**Command entry:**
+
+Runs a shell command directly via `sh -c`. No script file needed. Use `$CHANGED_FILES` in `checksFast` entries to insert changed file paths — it's replaced with a space-separated list of quoted paths. If `$CHANGED_FILES` is not present, changed files are appended to the end of the command.
+
+```json
+{
+  "type": "command",
+  "command": "bun test",
+  "failurePrompt": "Fix the test failures and continue working."
+}
+```
+
+With file filter:
+
+```json
+{
+  "type": "command",
+  "command": "npx eslint $CHANGED_FILES",
+  "fileFilter": ["*.ts", "*.tsx"],
+  "failurePrompt": "Fix the lint issues and continue working."
+}
+```
+
+Shell features like pipes, `&&`, and redirects work:
+
+```json
+{
+  "type": "command",
+  "command": "npx tsc --noEmit && bun test",
+  "failurePrompt": "Fix the failures and continue working."
 }
 ```
 

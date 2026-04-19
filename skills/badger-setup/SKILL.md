@@ -35,7 +35,13 @@ Based on project detection, propose defaults for each config field. Ask the user
 | `excludePatterns` | File patterns to exclude from watching | `["**/*.lock"]` (keep minimal — only lock files and generated artifacts) |
 | `checksFast` | Fast per-file checks | Separate entries with `fileFilter` (see below) |
 | `checks` | Full test suite | Based on detected test framework |
-| `release` | Release step | Script or prompt based on project |
+| `release` | Release step | Script, command, or prompt based on project |
+
+**Entry types** — Each check or release entry can be one of three types:
+
+- `"script"` — Runs an executable script at the given `path`. Changed files are passed as arguments. Best for complex multi-step logic.
+- `"command"` — Runs a shell command string directly via `sh -c`. Use `$CHANGED_FILES` to insert changed file paths (for `checksFast` entries). No script file needed. Supports pipes, `&&`, and other shell features.
+- `"prompt"` — Sends a text `content` prompt to the agent. No script or command is run. Useful for reminders or instructions.
 
 **Important rules**:
 
@@ -53,7 +59,7 @@ Create `.pi/badger.json` in the project root with the confirmed configuration.
 
 The `checksFast` array should have **one entry per check type**, each with `fileFilter` to route only relevant changed files to that script. This gives clear failure messages, lets each check run independently, and avoids running e.g. the linter on test files or the test runner on source files.
 
-**Example — JS/TS project with unit tests:**
+**Example — JS/TS project with unit tests (using scripts):**
 
 ```json
 {
@@ -89,6 +95,47 @@ The `checksFast` array should have **one entry per check type**, each with `file
   "release": {
     "type": "script",
     "path": "scripts/release",
+    "failurePrompt": "The release failed. Review the errors above."
+  }
+}
+```
+
+**Example — JS/TS project with inline commands (no scripts needed):**
+
+```json
+{
+  "watchPatterns": ["src/**/*", "test/**/*"],
+  "excludePatterns": ["**/*.lock"],
+  "notifyWithoutConfig": true,
+  "checksFast": [
+    {
+      "type": "command",
+      "command": "npx eslint $CHANGED_FILES",
+      "fileFilter": ["*.ts", "*.tsx", "*.js", "*.jsx"],
+      "failurePrompt": "Fix the lint issues identified above and continue working."
+    },
+    {
+      "type": "command",
+      "command": "npx tsc --noEmit",
+      "failurePrompt": "Fix the type errors identified above and continue working."
+    },
+    {
+      "type": "command",
+      "command": "npx vitest run $CHANGED_FILES",
+      "fileFilter": ["*.test.ts", "*.spec.ts", "*.test.js", "*.spec.js"],
+      "failurePrompt": "Fix the test failures identified above and continue working."
+    }
+  ],
+  "checks": [
+    {
+      "type": "command",
+      "command": "npx vitest run",
+      "failurePrompt": "Fix the test failures and continue working."
+    }
+  ],
+  "release": {
+    "type": "command",
+    "command": "npm publish",
     "failurePrompt": "The release failed. Review the errors above."
   }
 }
@@ -138,9 +185,9 @@ The `checksFast` array should have **one entry per check type**, each with `file
 
 Only include entries for tools the project actually uses. If there's no linter, don't create a lint entry. If there's no type checker, don't create a typecheck entry.
 
-### Step 4: Write check scripts
+### Step 4: Write check scripts (if using `"type": "script"`)
 
-Create executable scripts in the project's `scripts/` directory. Each script should:
+If using `"type": "script"` entries, create executable scripts in the project's `scripts/` directory. If using `"type": "command"`, no scripts are needed — skip this step.
 
 - Accept changed file paths as arguments (for `checksFast` scripts, these are already filtered by `fileFilter`)
 - Return exit code 0 on success, non-zero on failure
@@ -251,7 +298,9 @@ After creating scripts, make them executable: `chmod +x scripts/*`
 
 ### Notes
 
-- If a `checksFast`, `checks`, or `release` entry uses `"type": "prompt"`, no script is needed. The `content` field contains the prompt text sent to the agent.
+- If a `checksFast` entry uses `"type": "command"`, use `$CHANGED_FILES` in the command string to insert the space-separated list of changed files (filtered by `fileFilter`). If `$CHANGED_FILES` is not present, changed files are appended to the end of the command. If no files match `fileFilter`, the entry is skipped entirely.
+- If a `checks` or `release` entry uses `"type": "command"`, the command runs as-is (no file arguments — these entries don't receive changed files).
+- If a `checksFast`, `checks`, or `release` entry uses `"type": "prompt"`, no script or command is needed. The `content` field contains the prompt text sent to the agent.
 - Customize `failurePrompt` in the config to change what the agent is told when a check fails.
 - Set any top-level key to `null` or omit it to disable that step (e.g., remove `release` to skip auto-release).
 - Each `checksFast` entry short-circuits on failure — if the lint entry fails, typecheck and test_changed entries are skipped. This keeps feedback fast and focused.

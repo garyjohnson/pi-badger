@@ -25,22 +25,25 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 // ---------------------------------------------------------------------------
 
 interface CheckEntry {
-	type: "script" | "prompt";
+	type: "script" | "command" | "prompt";
 	path?: string;
+	command?: string;
 	content?: string;
 	failurePrompt?: string;
 }
 
 interface FastCheckEntry {
-	type: "script";
-	path: string;
+	type: "script" | "command";
+	path?: string;
+	command?: string;
 	fileFilter?: string[];
 	failurePrompt?: string;
 }
 
 interface ReleaseEntry {
-	type: "script" | "prompt";
+	type: "script" | "command" | "prompt";
 	path?: string;
+	command?: string;
 	content?: string;
 	failurePrompt?: string;
 }
@@ -444,6 +447,53 @@ async function runScript(
 	}
 }
 
+/** Run a shell command and return exit code and output. Pass signal to support cancellation. */
+async function runCommand(
+	_pi: ExtensionAPI,
+	cwd: string,
+	commandStr: string,
+	signal?: AbortSignal,
+): Promise<{ exitCode: number; stdout: string; stderr: string; aborted: boolean }> {
+	try {
+		const result = await _pi.exec("sh", ["-c", commandStr], { cwd, signal });
+		return {
+			exitCode: result.code ?? 1,
+			stdout: result.stdout,
+			stderr: result.stderr,
+			aborted: false,
+		};
+	} catch (err) {
+		// Check if the error is due to abort
+		if (signal?.aborted) {
+			return {
+				exitCode: -1,
+				stdout: "",
+				stderr: "Aborted",
+				aborted: true,
+			};
+		}
+		return {
+			exitCode: 1,
+			stdout: "",
+			stderr: err instanceof Error ? err.message : String(err),
+			aborted: false,
+		};
+	}
+}
+
+/** Build a shell command string, replacing $CHANGED_FILES with quoted file paths. */
+function buildCommand(
+	commandTemplate: string,
+	files: string[],
+): string {
+	const quotedFiles = files.map((f) => `'${f.replace(/'/g, "'\\''")}'`);
+	if (commandTemplate.includes("$CHANGED_FILES")) {
+		return commandTemplate.replace(/\$CHANGED_FILES/g, quotedFiles.join(" "));
+	}
+	// If no $CHANGED_FILES placeholder, append changed files to the end
+	return commandTemplate + " " + quotedFiles.join(" ");
+}
+
 // ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
@@ -614,8 +664,11 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					entryFiles = filesToCheck.filter((f) => filterMatch(f.replace(/\\/g, "/")));
 				}
 
+				const entryLabel = entry.type === "command" ? entry.command : entry.path;
+
 				debugLog.log("fast_check", "Evaluating entry", {
-					path: entry.path,
+					type: entry.type,
+					label: entryLabel,
 					fileFilter: entry.fileFilter,
 					matchingFiles: entryFiles,
 					skipped: entryFiles.length === 0,
@@ -625,19 +678,26 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				if (entryFiles.length === 0) continue;
 
 				const startTime = Date.now();
-				const result = await runScript(pi, cwd, entry.path, entryFiles, signal);
+				let result: { exitCode: number; stdout: string; stderr: string; aborted: boolean };
+				if (entry.type === "command" && entry.command) {
+					const cmd = buildCommand(entry.command, entryFiles);
+					result = await runCommand(pi, cwd, cmd, signal);
+				} else {
+					result = await runScript(pi, cwd, entry.path!, entryFiles, signal);
+				}
 				const elapsed = Date.now() - startTime;
 
 				if (result.aborted) {
 					debugLog.log("fast_check", "Cancelled during execution — new changes superseded this run", {
-						path: entry.path,
+						label: entryLabel,
 						elapsedMs: elapsed,
 					});
 					return;
 				}
 
-				debugLog.log("fast_check", "Script completed", {
-					path: entry.path,
+				debugLog.log("fast_check", "Check completed", {
+					type: entry.type,
+					label: entryLabel,
 					exitCode: result.exitCode,
 					elapsedMs: elapsed,
 					stdoutLength: result.stdout.length,
@@ -647,8 +707,8 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				});
 
 				if (signal.aborted) {
-					debugLog.log("fast_check", "Cancelled — new changes detected after script finished", {
-						path: entry.path,
+					debugLog.log("fast_check", "Cancelled — new changes detected after check finished", {
+						label: entryLabel,
 						exitCode: result.exitCode,
 					});
 					return;
@@ -659,11 +719,11 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					const failurePrompt =
 						entry.failurePrompt || DEFAULT_FAST_FAILURE_PROMPT;
 					const message = `Badger fast check failed (${
-						entry.path
+						entryLabel
 					}) on files: ${entryFiles.join(", ")}\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`;
 
 					debugLog.log("fast_check", "Failed — short-circuiting remaining entries", {
-						path: entry.path,
+						label: entryLabel,
 						exitCode: result.exitCode,
 						files: entryFiles,
 					});
@@ -740,7 +800,32 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			const failures: string[] = [];
 
 			for (const entry of config.checks) {
-				if (entry.type === "script" && entry.path) {
+				const entryLabel = entry.type === "command" ? entry.command : entry.path;
+
+				if (entry.type === "command" && entry.command) {
+					const startTime = Date.now();
+					const result = await runCommand(pi, ctx.cwd, entry.command);
+					const elapsed = Date.now() - startTime;
+
+					debugLog.log("agent_check", "Command completed", {
+						command: entry.command,
+						exitCode: result.exitCode,
+						elapsedMs: elapsed,
+						stdoutLength: result.stdout.length,
+						stderrLength: result.stderr.length,
+						stdout: result.stdout.length <= 500 ? result.stdout : result.stdout.slice(0, 500) + "...[truncated]",
+						stderr: result.stderr.length <= 500 ? result.stderr : result.stderr.slice(0, 500) + "...[truncated]",
+					});
+
+					if (result.exitCode !== 0) {
+						const output = result.stderr || result.stdout;
+						const failurePrompt =
+							entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
+						failures.push(
+							`**${entryLabel}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+						);
+					}
+				} else if (entry.type === "script" && entry.path) {
 					const startTime = Date.now();
 					const result = await runScript(pi, ctx.cwd, entry.path);
 					const elapsed = Date.now() - startTime;
@@ -760,7 +845,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 						const failurePrompt =
 							entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
 						failures.push(
-							`**${entry.path}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+							`**${entryLabel}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
 						);
 					}
 				} else if (entry.type === "prompt" && entry.content) {
@@ -799,13 +884,58 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			// Notify user of passing checks
 			ctx.ui.notify("✓ All checks passed", "info");
 
-			// Run release
+// Run release
 			if (config.release) {
 				isRunningRelease = true;
 				debugLog.log("agent_release", "Starting release");
 
+				const releaseLabel = config.release.type === "command" ? config.release.command : config.release.path;
+
 				try {
-					if (config.release.type === "script" && config.release.path) {
+					if (config.release.type === "command" && config.release.command) {
+						const startTime = Date.now();
+						const result = await runCommand(
+							pi,
+							ctx.cwd,
+							config.release.command,
+						);
+						const elapsed = Date.now() - startTime;
+
+						debugLog.log("agent_release", "Command completed", {
+							command: config.release.command,
+							exitCode: result.exitCode,
+							elapsedMs: elapsed,
+							stdoutLength: result.stdout.length,
+							stderrLength: result.stderr.length,
+							stdout: result.stdout.length <= 500 ? result.stdout : result.stdout.slice(0, 500) + "...[truncated]",
+							stderr: result.stderr.length <= 500 ? result.stderr : result.stderr.slice(0, 500) + "...[truncated]",
+						});
+
+						if (result.exitCode !== 0) {
+							const output = result.stderr || result.stdout;
+							const failurePrompt =
+								config.release.failurePrompt ||
+								DEFAULT_RELEASE_FAILURE_PROMPT;
+							ctx.ui.notify("✗ Release failed", "error");
+							debugLog.log("agent_release", "Release failed", {
+								exitCode: result.exitCode,
+							});
+							// Release failure is for the user only — pi doesn't fix it
+							pi.sendMessage(
+								{
+									customType: "badger-release-failure",
+									content: `Badger release failed (${
+										releaseLabel
+									}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+									display: true,
+								},
+								{ triggerTurn: false },
+							);
+						} else {
+							ctx.ui.notify("✓ Released successfully", "info");
+							debugLog.log("agent_release", "Release succeeded");
+						}
+					} else if (config.release.type === "script" && config.release.path) {
 						const startTime = Date.now();
 						const result = await runScript(
 							pi,
@@ -838,7 +968,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 								{
 									customType: "badger-release-failure",
 									content: `Badger release failed (${
-										config.release.path
+										releaseLabel
 									}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
 									display: true,
 								},
@@ -926,7 +1056,28 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				const failures: string[] = [];
 
 				for (const entry of config.checks) {
-					if (entry.type === "script" && entry.path) {
+					const entryLabel = entry.type === "command" ? entry.command : entry.path;
+
+					if (entry.type === "command" && entry.command) {
+						const startTime = Date.now();
+						const result = await runCommand(pi, ctx.cwd, entry.command);
+						const elapsed = Date.now() - startTime;
+
+						debugLog.log("manual_check", "Command completed", {
+							command: entry.command,
+							exitCode: result.exitCode,
+							elapsedMs: elapsed,
+						});
+
+						if (result.exitCode !== 0) {
+							const output = result.stderr || result.stdout;
+							const failurePrompt =
+								entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
+							failures.push(
+								`**${entryLabel}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+							);
+						}
+					} else if (entry.type === "script" && entry.path) {
 						const startTime = Date.now();
 						const result = await runScript(pi, ctx.cwd, entry.path);
 						const elapsed = Date.now() - startTime;
@@ -942,7 +1093,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 							const failurePrompt =
 								entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
 							failures.push(
-								`**${entry.path}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+								`**${entryLabel}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
 							);
 						}
 					}
@@ -993,7 +1144,43 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 			isRunningRelease = true;
 			try {
-				if (config.release.type === "script" && config.release.path) {
+				const releaseLabel = config.release.type === "command" ? config.release.command : config.release.path;
+
+				if (config.release.type === "command" && config.release.command) {
+					const startTime = Date.now();
+					const result = await runCommand(
+						pi,
+						ctx.cwd,
+						config.release.command,
+					);
+					const elapsed = Date.now() - startTime;
+
+					debugLog.log("manual_release", "Command completed", {
+						command: config.release.command,
+						exitCode: result.exitCode,
+						elapsedMs: elapsed,
+					});
+
+					if (result.exitCode !== 0) {
+						const output = result.stderr || result.stdout;
+						const failurePrompt =
+							config.release.failurePrompt ||
+							DEFAULT_RELEASE_FAILURE_PROMPT;
+						ctx.ui.notify("✗ Release failed", "error");
+						pi.sendMessage(
+							{
+								customType: "badger-release-failure",
+								content: `Badger release failed (${
+									releaseLabel
+								}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+								display: true,
+							},
+							{ triggerTurn: false },
+						);
+					} else {
+						ctx.ui.notify("✓ Released successfully", "info");
+					}
+				} else if (config.release.type === "script" && config.release.path) {
 					const startTime = Date.now();
 					const result = await runScript(
 						pi,
@@ -1018,7 +1205,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 							{
 								customType: "badger-release-failure",
 								content: `Badger release failed (${
-									config.release.path
+									releaseLabel
 								}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
 								display: true,
 							},

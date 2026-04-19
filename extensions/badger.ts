@@ -11,10 +11,13 @@
  */
 
 import * as fs from "node:fs";
-import * as path from "path";
+import * as path from "node:path";
+import * as url from "node:url";
 import * as crypto from "node:crypto";
 import picomatch from "picomatch";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+
+const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Types
@@ -59,14 +62,24 @@ interface FileHash {
 // ---------------------------------------------------------------------------
 
 const DEFAULT_CONFIG: BadgerConfig = {
-	watchPatterns: ["src/**/*", "lib/**/*", "pkg/**/*"],
+	watchPatterns: ["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"],
 	excludePatterns: [],
 	notifyWithoutConfig: true,
 	checksFast: [
 		{
 			type: "script",
-			path: "scripts/check_fast",
-			failurePrompt: "Fix the issues identified above and continue working.",
+			path: "scripts/lint",
+			failurePrompt: "Fix the lint issues identified above and continue working.",
+		},
+		{
+			type: "script",
+			path: "scripts/typecheck",
+			failurePrompt: "Fix the type errors identified above and continue working.",
+		},
+		{
+			type: "script",
+			path: "scripts/test_changed",
+			failurePrompt: "Fix the test failures identified above and continue working.",
 		},
 	],
 	checks: [
@@ -552,15 +565,35 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	});
 
 	// -----------------------------------------------------------------------
-	// /badger-setup command — redirects to skill
+	// /badger-setup command — runs setup by sending skill instructions to agent
 	// -----------------------------------------------------------------------
 	pi.registerCommand("badger-setup", {
 		description: "Configure Badger quality gate for this project",
 		handler: async (_args, ctx) => {
-			ctx.ui.notify(
-				"Use the badger-setup skill to configure Badger: /skill:badger-setup",
-				"info",
-			);
+			// Read the skill file and send it to the agent as a user message
+			const skillPath = path.join(__dirname, "..", "skills", "badger-setup", "SKILL.md");
+			let skillContent: string;
+			try {
+				skillContent = fs.readFileSync(skillPath, "utf-8");
+			} catch {
+				// Skill file not found — fall back to a minimal setup prompt
+				skillContent = `Analyze this project and create Badger configuration:
+
+1. Detect the language, test framework, linter, and build tools
+2. Create \`.pi/badger.json\` with appropriate watchPatterns, excludePatterns, checksFast, checks, and release settings
+3. Create executable check scripts in \`scripts/\` — one per fast check (lint, typecheck, test\_changed), plus check and release
+4. Each checksFast script should operate only on changed files (passed as arguments)
+5. Make the scripts executable with chmod +x
+
+checksFast entries should target specific concerns (lint, typecheck, per-file tests) for clear failure messages. All checksFast scripts receive changed file paths as arguments.`;
+			}
+
+			// Strip YAML frontmatter from skill content
+			const contentWithoutFrontmatter = skillContent.replace(/^---\n[\s\S]*?---\n/, "");
+
+			const message = `I want to set up Badger quality gate for this project. Please follow these instructions:\n\n${contentWithoutFrontmatter.trim()}`;
+
+			pi.sendUserMessage(message);
 		},
 	});
 

@@ -6,7 +6,7 @@ A quality gate extension for the [pi coding agent](https://github.com/badlogic/p
 
 Badger operates in three stages:
 
-1. **Fast checks (`checksFast`)** — Run automatically at the end of each turn when watched files change. Scripts receive changed file paths as arguments. Designed for linting, type checking, and per-file validation. Failures are injected back to pi as steering messages — pi keeps working and fixes issues.
+1. **Fast checks (`checksFast`)** — Run automatically at the end of each turn when watched files change. Typically configured as separate entries for lint, typecheck, and per-file tests. Each script receives changed file paths as arguments and operates only on those files. Short-circuits on first failure. Failures are injected back to pi as steering messages — pi keeps working and fixes issues.
 
 2. **Full checks (`checks`)** — Run automatically at `agent_end` when watched files have changed since the last successful check. Runs the complete test suite. If checks fail, pi is told to fix the failures and keeps working. Loops until all checks pass.
 
@@ -35,7 +35,7 @@ Or add to `.pi/settings.json`:
 
 ## Setup
 
-Run the setup skill to analyze your project and create configuration:
+Run the setup command to analyze your project and create configuration:
 
 ```
 /badger-setup
@@ -59,14 +59,24 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 
 ```json
 {
-  "watchPatterns": ["src/**/*", "lib/**/*", "pkg/**/*"],
-  "excludePatterns": ["**/*.md", "**/*.json", "**/*.lock"],
+  "watchPatterns": ["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"],
+  "excludePatterns": ["**/*.lock"],
   "notifyWithoutConfig": true,
   "checksFast": [
     {
       "type": "script",
-      "path": "scripts/check_fast",
-      "failurePrompt": "Fix the issues identified above and continue working."
+      "path": "scripts/lint",
+      "failurePrompt": "Fix the lint issues identified above and continue working."
+    },
+    {
+      "type": "script",
+      "path": "scripts/typecheck",
+      "failurePrompt": "Fix the type errors identified above and continue working."
+    },
+    {
+      "type": "script",
+      "path": "scripts/test_changed",
+      "failurePrompt": "Fix the test failures identified above and continue working."
     }
   ],
   "checks": [
@@ -88,10 +98,10 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `watchPatterns` | `string[]` | `["src/**/*", "lib/**/*", "pkg/**/*"]` | Glob patterns for files to watch |
-| `excludePatterns` | `string[]` | `[]` | Glob patterns to exclude from watching |
+| `watchPatterns` | `string[]` | `["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"]` | Glob patterns for files to watch (must include test dirs) |
+| `excludePatterns` | `string[]` | `[]` | Glob patterns to exclude — keep minimal (only lock/gen files) |
 | `notifyWithoutConfig` | `boolean` | `true` | Show setup notification when no config found |
-| `checksFast` | `FastCheckEntry[]` | (see defaults) | Fast per-file checks (script only) |
+| `checksFast` | `FastCheckEntry[]` | lint, typecheck, test\_changed | Fast per-file checks (script only). Short-circuits on first failure. |
 | `checks` | `CheckEntry[]` | (see defaults) | Full test suite (script or prompt) |
 | `release` | `CheckEntry \| null` | (see defaults) | Release step (script or prompt), omit to disable |
 
@@ -134,33 +144,65 @@ Prompt entries are fire-and-forget — they send instructions to pi but don't ha
 
 ## Scripts
 
-### `scripts/check_fast`
+### `scripts/lint`
 
-Receives changed file paths as arguments. Should run fast checks (lint, typecheck) on those files only.
+Receives changed file paths as arguments. Runs the linter on only the changed source files.
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 CHANGED_FILES=("$@")
-npx eslint "${CHANGED_FILES[@]}"
-npx tsc --noEmit
+# Filter to source files, then lint only those
+SOURCE_FILES=()
+for f in "${CHANGED_FILES[@]}"; do
+  case "$f" in
+    *.ts|*.tsx|*.js|*.jsx) SOURCE_FILES+=("$f") ;;
+  esac
+done
+[ ${#SOURCE_FILES[@]} -eq 0 ] && exit 0
+npx eslint "${SOURCE_FILES[@]}"
 ```
 
-Exit 0 on success, non-zero on failure. Output is sent to pi only on failure.
+### `scripts/typecheck`
 
-### `scripts/check`
-
-No arguments. Should run the full test suite.
+Receives changed file paths as arguments (may be ignored by type checkers that run project-wide). Runs type checking.
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
-npm test
+npx tsc --noEmit
+```
+
+### `scripts/test_changed`
+
+Receives changed file paths as arguments. Runs only the tests that cover the changed files. Maps source files to their corresponding test files.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+CHANGED_FILES=("$@")
+# Find test files corresponding to changed source files
+TEST_FILES=()
+for f in "${CHANGED_FILES[@]}"; do
+  case "$f" in *.test.*|*.spec.*) TEST_FILES+=("$f") ;; esac
+done
+[ ${#TEST_FILES[@]} -eq 0 ] && exit 0
+npx vitest run "${TEST_FILES[@]}"
+```
+
+### `scripts/check`
+
+No arguments. Runs the full test suite.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+npx vitest run
 ```
 
 ### `scripts/release`
 
-No arguments. Should run release steps.
+No arguments. Runs release steps.
 
 ```bash
 #!/usr/bin/env bash

@@ -1,0 +1,185 @@
+# pi-badger
+
+A quality gate extension for the [pi coding agent](https://github.com/badlogic/pi-mono). Badger automatically runs checks when files change and enforces a test-pass-release workflow.
+
+## How It Works
+
+Badger operates in three stages:
+
+1. **Fast checks (`checksFast`)** — Run automatically at the end of each turn when watched files change. Scripts receive changed file paths as arguments. Designed for linting, type checking, and per-file validation. Failures are injected back to pi as steering messages — pi keeps working and fixes issues.
+
+2. **Full checks (`checks`)** — Run automatically at `agent_end` when watched files have changed since the last successful check. Runs the complete test suite. If checks fail, pi is told to fix the failures and keeps working. Loops until all checks pass.
+
+3. **Release** — Runs automatically after full checks pass. If the release fails, only the user is notified (pi doesn't try to fix release failures).
+
+```
+File changes detected → checksFast (per turn, async)
+Agent finishes → checks (full suite)
+  └── pass → release
+  └── fail → pi fixes → repeat
+```
+
+## Installation
+
+```bash
+pi install git:github.com/garyjohnson/pi-badger
+```
+
+Or add to `.pi/settings.json`:
+
+```json
+{
+  "packages": ["git:github.com/garyjohnson/pi-badger"]
+}
+```
+
+## Setup
+
+Run the setup skill to analyze your project and create configuration:
+
+```
+/badger-setup
+```
+
+Or use the prompt template:
+
+```
+/badger-init
+```
+
+This will:
+- Detect your language, test framework, and linter
+- Propose appropriate defaults
+- Create `.pi/badger.json`
+- Create stub scripts in `scripts/`
+
+## Configuration
+
+Badger reads configuration from `.pi/badger.json` in your project root:
+
+```json
+{
+  "watchPatterns": ["src/**/*", "lib/**/*", "pkg/**/*"],
+  "excludePatterns": ["**/*.md", "**/*.json", "**/*.lock"],
+  "notifyWithoutConfig": true,
+  "checksFast": [
+    {
+      "type": "script",
+      "path": "scripts/check_fast",
+      "failurePrompt": "Fix the issues identified above and continue working."
+    }
+  ],
+  "checks": [
+    {
+      "type": "script",
+      "path": "scripts/check",
+      "failurePrompt": "Fix the test failures and continue working."
+    }
+  ],
+  "release": {
+    "type": "script",
+    "path": "scripts/release",
+    "failurePrompt": "The release failed. Review the errors above."
+  }
+}
+```
+
+### Fields
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `watchPatterns` | `string[]` | `["src/**/*", "lib/**/*", "pkg/**/*"]` | Glob patterns for files to watch |
+| `excludePatterns` | `string[]` | `[]` | Glob patterns to exclude from watching |
+| `notifyWithoutConfig` | `boolean` | `true` | Show setup notification when no config found |
+| `checksFast` | `FastCheckEntry[]` | (see defaults) | Fast per-file checks (script only) |
+| `checks` | `CheckEntry[]` | (see defaults) | Full test suite (script or prompt) |
+| `release` | `CheckEntry \| null` | (see defaults) | Release step (script or prompt), omit to disable |
+
+### Entry Types
+
+**Script entry:**
+
+```json
+{
+  "type": "script",
+  "path": "scripts/check",
+  "failurePrompt": "Fix the failures and continue."
+}
+```
+
+**Prompt entry:**
+
+```json
+{
+  "type": "prompt",
+  "content": "Review the changes and ensure the changelog is updated."
+}
+```
+
+Prompt entries are fire-and-forget — they send instructions to pi but don't have a pass/fail gate. Use them for steps that need LLM judgment.
+
+### Disabling Steps
+
+- Remove `release` or set to `null` to skip auto-release
+- Remove entries from `checksFast` or `checks` arrays to disable individual checks
+- Set `checksFast: []` to disable fast checks entirely
+
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/badger` | Manually trigger full checks |
+| `/badger-release` | Manually trigger the release step |
+| `/badger-setup` | Configure Badger for this project |
+
+## Scripts
+
+### `scripts/check_fast`
+
+Receives changed file paths as arguments. Should run fast checks (lint, typecheck) on those files only.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+CHANGED_FILES=("$@")
+npx eslint "${CHANGED_FILES[@]}"
+npx tsc --noEmit
+```
+
+Exit 0 on success, non-zero on failure. Output is sent to pi only on failure.
+
+### `scripts/check`
+
+No arguments. Should run the full test suite.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+npm test
+```
+
+### `scripts/release`
+
+No arguments. Should run release steps.
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+npm run build
+npm publish
+```
+
+Release failures are reported to the user only — pi does not attempt to fix them.
+
+## Behavior Details
+
+- **Fast checks are async** — they run in the background after each turn. If new changes arrive before fast checks complete, the previous run is aborted and a new one starts.
+- **Fast checks short-circuit** — if the first entry in `checksFast` fails, subsequent entries are skipped.
+- **Full checks run all entries** — every entry in `checks` runs, and all failures are reported together.
+- **The check loop is unbounded** — pi keeps working until all checks pass or the user aborts with Esc/Ctrl+C.
+- **File hashing** — Badger uses content hashing (not git) to detect changes, so it works in any project.
+- **Release failure is user-facing** — pi does not try to fix release issues; only the user sees the failure output.
+
+## License
+
+MIT

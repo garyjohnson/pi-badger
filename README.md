@@ -175,13 +175,17 @@ npx tsc --noEmit
 
 ### `scripts/test_changed`
 
-Receives changed file paths as arguments. Uses the test runner's built-in related-file mode to find and run affected tests — don't manually map source files to test files.
+Receives changed file paths as arguments (a mix of source and test files from Badger). How it selects tests depends on the runner:
+
+- **With `--related`** (Vitest, Jest): pass all changed files — the runner resolves which tests cover which sources
+- **Without `--related`** (pytest, go test): filter to only test files by naming convention and run those
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 CHANGED_FILES=("$@")
 [ ${#CHANGED_FILES[@]} -eq 0 ] && exit 0
+# Vitest: pass all changed files, let --related resolve them
 npx vitest run --related "${CHANGED_FILES[@]}"
 ```
 

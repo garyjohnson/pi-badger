@@ -157,12 +157,19 @@ npx tsc --noEmit
 
 #### `scripts/test_changed` — Run tests for changed files
 
-Receives changed file paths as arguments. Use the test runner's built-in related-file mode to find and run affected tests — don't try to manually map source files to test files:
+Receives changed file paths as arguments from Badger. These are a mix of source files and test files. The script needs to identify which are test files and which are source files, because:
+
+- **Runners with `--related`** (Vitest, Jest): pass all changed files — the runner resolves which tests cover which source files
+- **Runners without `--related`** (pytest, go test, cargo test): filter to only test files and run those directly
+
+Both cases use the same pattern: separate `CHANGED_FILES` into `SOURCE_FILES` and `TEST_FILES` based on the project's test file conventions, then run the appropriate command.
+
+**Vitest / Jest (has `--related`):**
 
 ```bash
 #!/usr/bin/env bash
 # Badger per-file test — runs tests related to changed files
-# Arguments: changed file paths (from Badger)
+# Arguments: changed file paths (from Badger, mixed source + test files)
 # Exit 0 on success, non-zero on failure
 set -euo pipefail
 
@@ -174,11 +181,59 @@ if [ ${#CHANGED_FILES[@]} -eq 0 ]; then
 fi
 
 echo "Running tests related to ${#CHANGED_FILES[@]} changed file(s)..."
-# Vitest/Jest can find related tests given source files:
 npx vitest run --related "${CHANGED_FILES[@]}"
-# For runners without --related, you can filter to test files:
-#   npx jest --findRelatedTests --changed "${CHANGED_FILES[@]}"
-#   pytest "${CHANGED_FILES[@]}"
+```
+
+**pytest (no `--related`, must filter to test files):**
+
+```bash
+#!/usr/bin/env bash
+# Badger per-file test — runs changed test files
+# Arguments: changed file paths (from Badger, mixed source + test files)
+# Exit 0 on success, non-zero on failure
+set -euo pipefail
+
+CHANGED_FILES=("$@")
+
+# Separate source files from test files
+SOURCE_FILES=()
+TEST_FILES=()
+for f in "${CHANGED_FILES[@]}"; do
+  case "$f" in
+    tests/test_*.py|tests/*_test.py|test_*.py|*_test.py) TEST_FILES+=("$f") ;;
+    *.py) SOURCE_FILES+=("$f") ;;
+  esac
+done
+
+if [ ${#TEST_FILES[@]} -eq 0 ]; then
+  echo "No test files changed, running full suite"
+  pytest
+  exit $?
+fi
+
+echo "Running ${#TEST_FILES[@]} test file(s)..."
+pytest "${TEST_FILES[@]}"
+```
+
+**Go (no `--related`, test files identified by `_test.go` suffix):**
+
+```bash
+#!/usr/bin/env bash
+# Badger per-file test — runs tests for changed packages
+# Arguments: changed file paths (from Badger)
+set -euo pipefail
+
+CHANGED_FILES=("$@")
+
+# Collect unique package directories from changed files
+PKGS=()
+for f in "${CHANGED_FILES[@]}"; do
+  PKGS+=("$(dirname "$f")")
+done
+IFS=$'\n' PKGS=($(sort -u <<<"${PKGS[*]}")); unset IFS
+
+echo "Testing ${#PKGS[@]} package(s)..."
+go test "${PKGS[@]}"
 ```
 
 Only include entries for tools the project actually uses. If there's no linter, don't create a lint entry. If there's no type checker, don't create a typecheck entry.

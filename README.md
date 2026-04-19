@@ -6,14 +6,14 @@ A quality gate extension for the [pi coding agent](https://github.com/badlogic/p
 
 Badger operates in three stages:
 
-1. **Fast checks (`checksFast`)** — Run automatically at the end of each turn when watched files change. Typically configured as separate entries for lint, typecheck, and per-file tests. Each script receives changed file paths as arguments and operates only on those files. Short-circuits on first failure. Failures are injected back to pi as steering messages — pi keeps working and fixes issues.
+1. **Fast checks (`checksFast`)** — Run automatically at the end of each turn when watched files change. Typically configured as separate entries for lint, typecheck, and per-file tests. Each entry can use `fileFilter` to route only matching changed files to that script. Entries without `fileFilter` receive all changed files. Short-circuits on first failure. Failures are injected back to pi as steering messages — pi keeps working and fixes issues.
 
 2. **Full checks (`checks`)** — Run automatically at `agent_end` when watched files have changed since the last successful check. Runs the complete test suite. If checks fail, pi is told to fix the failures and keeps working. Loops until all checks pass.
 
 3. **Release** — Runs automatically after full checks pass. If the release fails, only the user is notified (pi doesn't try to fix release failures).
 
 ```
-File changes detected → checksFast (per turn, async)
+File changes detected → checksFast (per turn, async, fileFilter routes files)
 Agent finishes → checks (full suite)
   └── pass → release
   └── fail → pi fixes → repeat
@@ -66,6 +66,7 @@ Badger reads configuration from `.pi/badger.json` in your project root:
     {
       "type": "script",
       "path": "scripts/lint",
+      "fileFilter": ["*.ts", "*.tsx", "*.js", "*.jsx"],
       "failurePrompt": "Fix the lint issues identified above and continue working."
     },
     {
@@ -76,6 +77,7 @@ Badger reads configuration from `.pi/badger.json` in your project root:
     {
       "type": "script",
       "path": "scripts/test_changed",
+      "fileFilter": ["*.test.ts", "*.spec.ts", "*.test.js", "*.spec.js"],
       "failurePrompt": "Fix the test failures identified above and continue working."
     }
   ],
@@ -101,9 +103,29 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 | `watchPatterns` | `string[]` | `["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"]` | Glob patterns for files to watch (must include test dirs) |
 | `excludePatterns` | `string[]` | `[]` | Glob patterns to exclude — keep minimal (only lock/gen files) |
 | `notifyWithoutConfig` | `boolean` | `true` | Show setup notification when no config found |
-| `checksFast` | `FastCheckEntry[]` | lint, typecheck, test\_changed | Fast per-file checks (script only). Short-circuits on first failure. |
+| `checksFast` | `FastCheckEntry[]` | lint, typecheck, test_changed | Fast per-file checks (script only). Short-circuits on first failure. |
 | `checks` | `CheckEntry[]` | (see defaults) | Full test suite (script or prompt) |
 | `release` | `CheckEntry \| null` | (see defaults) | Release step (script or prompt), omit to disable |
+
+### FastCheckEntry
+
+```json
+{
+  "type": "script",
+  "path": "scripts/lint",
+  "fileFilter": ["*.ts", "*.tsx"],
+  "failurePrompt": "Fix the lint issues identified above and continue working."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `type` | `"script"` | Yes | Entry type (always `script` for fast checks) |
+| `path` | `string` | Yes | Path to the check script |
+| `fileFilter` | `string[]` | No | Glob patterns. Only changed files matching these patterns are passed to the script. If no files match, the entry is skipped entirely. Omit to receive all changed files. |
+| `failurePrompt` | `string` | No | Message sent to pi on failure |
+
+`fileFilter` uses [picomatch](https://github.com/micromatch/picomatch) glob patterns. Use it to route specific file types to specific fast checks — e.g., only `*.test.ts` files to the test runner, only `*.ts` files to the linter, only `e2e/**/*.spec.ts` to the e2e runner.
 
 ### Entry Types
 
@@ -146,26 +168,19 @@ Prompt entries are fire-and-forget — they send instructions to pi but don't ha
 
 ### `scripts/lint`
 
-Receives changed file paths as arguments. Filters to lintable files and runs the linter on only those.
+Receives only files matching `fileFilter` (e.g., `*.ts`, `*.tsx`). Run the linter directly on the arguments:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 CHANGED_FILES=("$@")
-# Filter to source files
-SOURCE_FILES=()
-for f in "${CHANGED_FILES[@]}"; do
-  case "$f" in
-    *.ts|*.tsx|*.js|*.jsx) SOURCE_FILES+=("$f") ;;
-  esac
-done
-[ ${#SOURCE_FILES[@]} -eq 0 ] && exit 0
-npx eslint "${SOURCE_FILES[@]}"
+[ ${#CHANGED_FILES[@]} -eq 0 ] && exit 0
+npx eslint "${CHANGED_FILES[@]}"
 ```
 
 ### `scripts/typecheck`
 
-Receives changed file paths as arguments (for reference). Most type checkers run project-wide.
+No `fileFilter` — runs on any change. Most type checkers check the whole project regardless of which files changed:
 
 ```bash
 #!/usr/bin/env bash
@@ -175,19 +190,17 @@ npx tsc --noEmit
 
 ### `scripts/test_changed`
 
-Receives changed file paths as arguments (a mix of source and test files from Badger). How it selects tests depends on the runner:
-
-- **With `--related`** (Vitest, Jest): pass all changed files — the runner resolves which tests cover which sources
-- **Without `--related`** (pytest, go test): filter to only test files by naming convention and run those
+Receives only files matching `fileFilter` (e.g., `*.test.ts`, `*.spec.ts`). Run the test runner on those files:
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 CHANGED_FILES=("$@")
 [ ${#CHANGED_FILES[@]} -eq 0 ] && exit 0
-# Vitest: pass all changed files, let --related resolve them
-npx vitest run --related "${CHANGED_FILES[@]}"
+npx vitest run "${CHANGED_FILES[@]}"
 ```
+
+Note: fast checks only receive files that changed. If a source file changes but its test file didn't, the fast test won't catch that — the full `checks` suite at `agent_end` covers it.
 
 ### `scripts/check`
 

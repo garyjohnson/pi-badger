@@ -23,6 +23,7 @@ Look at the project root for:
 - **Linter/formatter**: `eslint`, `prettier`, `ruff`, `mypy`, `clippy`, etc.
 - **Build tool**: `tsc`, `webpack`, `vite`, `setuptools`, `cargo`, etc.
 - **Existing scripts**: Check if a `scripts/` directory already exists
+- **Test file conventions**: How are test files named? Colocated (`.test.ts`, `.spec.ts`) or separate dirs (`tests/test_*.py`, `__tests__/`)? E2e tests?
 
 ### Step 2: Propose configuration to the user
 
@@ -32,7 +33,7 @@ Based on project detection, propose defaults for each config field. Ask the user
 |-------|-------------|-------------------|
 | `watchPatterns` | File patterns to watch for changes | Based on language and project structure (e.g., `["src/**/*", "test/**/*"]`) |
 | `excludePatterns` | File patterns to exclude from watching | `["**/*.lock"]` (keep minimal — only lock files and generated artifacts) |
-| `checksFast` | Fast per-file checks | Separate entries for lint, typecheck, and per-file test (see below) |
+| `checksFast` | Fast per-file checks | Separate entries with `fileFilter` (see below) |
 | `checks` | Full test suite | Based on detected test framework |
 | `release` | Release step | Script or prompt based on project |
 
@@ -40,8 +41,9 @@ Based on project detection, propose defaults for each config field. Ask the user
 
 - `watchPatterns` MUST include all source AND test directories. Changing a test file should trigger checks.
 - `excludePatterns` should be minimal — only lock files and generated artifacts. Never exclude `**/*.json` (it would skip `package.json`, `tsconfig.json`, etc.) or test files.
-- `checksFast` entries each operate on the changed files only. They should target specific concerns — one entry for linting, one for type checking, one for running relevant test files — so failures are clear and actionable.
-- All `checksFast` scripts receive the list of changed file paths as arguments. Each tool must be able to accept specific file paths. If a tool only runs project-wide (e.g., `tsc --noEmit`), it still goes in `checksFast` but the script runs it without the file arguments.
+- `checksFast` entries target specific concerns (lint, typecheck, tests) and use `fileFilter` to route relevant files to each script.
+- Each `checksFast` script receives only the changed files matching its `fileFilter`. If no files match, the entry is skipped entirely.
+- Entries without `fileFilter` receive all changed files and always run.
 
 Ask the user: "Here's what I detected and recommend. Should I proceed with these defaults, or would you like to customize any field?"
 
@@ -49,7 +51,9 @@ Ask the user: "Here's what I detected and recommend. Should I proceed with these
 
 Create `.pi/badger.json` in the project root with the confirmed configuration.
 
-The `checksFast` array should have **one entry per check type**, each with its own script. This gives clear failure messages and lets each check run independently. The typical entries for a JS/TS project are:
+The `checksFast` array should have **one entry per check type**, each with `fileFilter` to route only relevant changed files to that script. This gives clear failure messages, lets each check run independently, and avoids running e.g. the linter on test files or the test runner on source files.
+
+**Example — JS/TS project with unit tests:**
 
 ```json
 {
@@ -60,6 +64,7 @@ The `checksFast` array should have **one entry per check type**, each with its o
     {
       "type": "script",
       "path": "scripts/lint",
+      "fileFilter": ["*.ts", "*.tsx", "*.js", "*.jsx"],
       "failurePrompt": "Fix the lint issues identified above and continue working."
     },
     {
@@ -70,6 +75,7 @@ The `checksFast` array should have **one entry per check type**, each with its o
     {
       "type": "script",
       "path": "scripts/test_changed",
+      "fileFilter": ["*.test.ts", "*.spec.ts", "*.test.js", "*.spec.js"],
       "failurePrompt": "Fix the test failures identified above and continue working."
     }
   ],
@@ -88,15 +94,47 @@ The `checksFast` array should have **one entry per check type**, each with its o
 }
 ```
 
-**Adapt per language.** Not all projects have all three fast checks. Include only what applies:
+**Example — JS/TS project with separate unit and e2e tests:**
 
-| Language | Lint | Typecheck | Per-file test |
-|----------|------|-----------|---------------|
-| JS/TS | eslint / ruff | tsc --noEmit | jest/vitest on changed test files only |
-| Python | ruff check | mypy | pytest on changed test files only |
-| Rust | clippy | — | cargo test for changed module |
-| Go | — | — | go test for changed package |
-| Ruby | rubocop | — | rspec for changed spec files |
+```json
+{
+  "checksFast": [
+    {
+      "type": "script",
+      "path": "scripts/lint",
+      "fileFilter": ["*.ts", "*.tsx", "*.js", "*.jsx"],
+      "failurePrompt": "Fix the lint issues identified above and continue working."
+    },
+    {
+      "type": "script",
+      "path": "scripts/typecheck",
+      "failurePrompt": "Fix the type errors identified above and continue working."
+    },
+    {
+      "type": "script",
+      "path": "scripts/test_unit",
+      "fileFilter": ["*.test.ts", "*.test.js", "**/tests/**/*.test.ts"],
+      "failurePrompt": "Fix the unit test failures identified above and continue working."
+    },
+    {
+      "type": "script",
+      "path": "scripts/test_e2e",
+      "fileFilter": ["e2e/**/*.spec.ts", "*.e2e.ts"],
+      "failurePrompt": "Fix the e2e test failures identified above and continue working."
+    }
+  ]
+}
+```
+
+**Adapt per language.** `fileFilter` patterns vary by how the project names its test files:
+
+| Language | Lint filter | Typecheck filter | Test file filter |
+|----------|-------------|-----------------|------------------|
+| JS/TS | `*.ts`, `*.tsx`, `*.js`, `*.jsx` | (no filter — runs on all changes) | `*.test.ts`, `*.spec.ts`, `*.test.js`, `*.spec.js` |
+| Python | `*.py` | (no filter) | `tests/test_*.py`, `tests/*_test.py` |
+| Rust | `*.rs` | — | — |
+| Go | `*.go` | — | `*_test.go` |
+| Ruby | `*.rb` | — | `*_spec.rb` |
 
 Only include entries for tools the project actually uses. If there's no linter, don't create a lint entry. If there's no type checker, don't create a typecheck entry.
 
@@ -104,49 +142,42 @@ Only include entries for tools the project actually uses. If there's no linter, 
 
 Create executable scripts in the project's `scripts/` directory. Each script should:
 
-- Accept changed file paths as arguments (for checksFast scripts)
+- Accept changed file paths as arguments (for `checksFast` scripts, these are already filtered by `fileFilter`)
 - Return exit code 0 on success, non-zero on failure
 - Print useful output (errors to stderr, progress to stdout)
-- Operate **only on the changed files** when the tool supports it
+
+Because `fileFilter` handles the routing, scripts can be simple — they receive only the files they care about.
 
 #### `scripts/lint` — Lint changed files
 
-Receives changed file paths as arguments, filters to lintable files, and runs the linter on only those:
+Receives only files matching `fileFilter` (e.g., `*.ts`, `*.tsx`). Run the linter directly on those files:
 
 ```bash
 #!/usr/bin/env bash
-# Badger lint check — lints changed files only
-# Arguments: changed file paths (from Badger)
+# Badger lint check
+# Arguments: changed file paths (already filtered by fileFilter)
 # Exit 0 on success, non-zero on failure
 set -euo pipefail
 
 CHANGED_FILES=("$@")
 
-# Filter to lintable source files (adapt for your project)
-SOURCE_FILES=()
-for f in "${CHANGED_FILES[@]}"; do
-  case "$f" in
-    *.ts|*.tsx|*.js|*.jsx) SOURCE_FILES+=("$f") ;;
-  esac
-done
-
-if [ ${#SOURCE_FILES[@]} -eq 0 ]; then
-  echo "No source files to lint"
+if [ ${#CHANGED_FILES[@]} -eq 0 ]; then
+  echo "No files to lint"
   exit 0
 fi
 
-echo "Linting ${#SOURCE_FILES[@]} file(s)..."
-npx eslint "${SOURCE_FILES[@]}"
+echo "Linting ${#CHANGED_FILES[@]} file(s)..."
+npx eslint "${CHANGED_FILES[@]}"
 ```
 
 #### `scripts/typecheck` — Type check
 
-Receives changed file paths as arguments (for reference), but most type checkers run project-wide:
+No `fileFilter` — runs on any change. Most type checkers check the whole project regardless of which files changed:
 
 ```bash
 #!/usr/bin/env bash
-# Badger typecheck — runs type checking
-# Arguments: changed file paths (from Badger; ignored by tsc)
+# Badger typecheck
+# Arguments: changed file paths (not used by tsc)
 # Exit 0 on success, non-zero on failure
 set -euo pipefail
 
@@ -155,88 +186,29 @@ echo "Running type checks (${#CHANGED_FILES[@]} file(s) changed)..."
 npx tsc --noEmit
 ```
 
-#### `scripts/test_changed` — Run tests for changed files
+#### `scripts/test_changed` — Run tests for changed test files
 
-Receives changed file paths as arguments from Badger. These are a mix of source files and test files. The script needs to identify which are test files and which are source files, because:
-
-- **Runners with `--related`** (Vitest, Jest): pass all changed files — the runner resolves which tests cover which source files
-- **Runners without `--related`** (pytest, go test, cargo test): filter to only test files and run those directly
-
-Both cases use the same pattern: separate `CHANGED_FILES` into `SOURCE_FILES` and `TEST_FILES` based on the project's test file conventions, then run the appropriate command.
-
-**Vitest / Jest (has `--related`):**
+Receives only files matching `fileFilter` (e.g., `*.test.ts`, `*.spec.ts`). Run the test runner on those files:
 
 ```bash
 #!/usr/bin/env bash
-# Badger per-file test — runs tests related to changed files
-# Arguments: changed file paths (from Badger, mixed source + test files)
+# Badger per-file test
+# Arguments: changed test file paths (already filtered by fileFilter)
 # Exit 0 on success, non-zero on failure
 set -euo pipefail
 
 CHANGED_FILES=("$@")
 
 if [ ${#CHANGED_FILES[@]} -eq 0 ]; then
-  echo "No changed files to test"
+  echo "No test files changed"
   exit 0
 fi
 
-echo "Running tests related to ${#CHANGED_FILES[@]} changed file(s)..."
-npx vitest run --related "${CHANGED_FILES[@]}"
+echo "Running ${#CHANGED_FILES[@]} test file(s)..."
+npx vitest run "${CHANGED_FILES[@]}"
 ```
 
-**pytest (no `--related`, must filter to test files):**
-
-```bash
-#!/usr/bin/env bash
-# Badger per-file test — runs changed test files
-# Arguments: changed file paths (from Badger, mixed source + test files)
-# Exit 0 on success, non-zero on failure
-set -euo pipefail
-
-CHANGED_FILES=("$@")
-
-# Separate source files from test files
-SOURCE_FILES=()
-TEST_FILES=()
-for f in "${CHANGED_FILES[@]}"; do
-  case "$f" in
-    tests/test_*.py|tests/*_test.py|test_*.py|*_test.py) TEST_FILES+=("$f") ;;
-    *.py) SOURCE_FILES+=("$f") ;;
-  esac
-done
-
-if [ ${#TEST_FILES[@]} -eq 0 ]; then
-  echo "No test files changed, running full suite"
-  pytest
-  exit $?
-fi
-
-echo "Running ${#TEST_FILES[@]} test file(s)..."
-pytest "${TEST_FILES[@]}"
-```
-
-**Go (no `--related`, test files identified by `_test.go` suffix):**
-
-```bash
-#!/usr/bin/env bash
-# Badger per-file test — runs tests for changed packages
-# Arguments: changed file paths (from Badger)
-set -euo pipefail
-
-CHANGED_FILES=("$@")
-
-# Collect unique package directories from changed files
-PKGS=()
-for f in "${CHANGED_FILES[@]}"; do
-  PKGS+=("$(dirname "$f")")
-done
-IFS=$'\n' PKGS=($(sort -u <<<"${PKGS[*]}")); unset IFS
-
-echo "Testing ${#PKGS[@]} package(s)..."
-go test "${PKGS[@]}"
-```
-
-Only include entries for tools the project actually uses. If there's no linter, don't create a lint entry. If there's no type checker, don't create a typecheck entry.
+Note: scripts only receive files that changed. If a source file changes but its test file didn't, the fast test won't catch that — the full `checks` suite at `agent_end` covers it.
 
 #### `scripts/check` — Full test suite
 

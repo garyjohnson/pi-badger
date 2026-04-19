@@ -33,6 +33,7 @@ interface CheckEntry {
 interface FastCheckEntry {
 	type: "script";
 	path: string;
+	fileFilter?: string[];
 	failurePrompt?: string;
 }
 
@@ -69,6 +70,7 @@ const DEFAULT_CONFIG: BadgerConfig = {
 		{
 			type: "script",
 			path: "scripts/lint",
+			fileFilter: ["*.ts", "*.tsx", "*.js", "*.jsx"],
 			failurePrompt: "Fix the lint issues identified above and continue working.",
 		},
 		{
@@ -79,6 +81,7 @@ const DEFAULT_CONFIG: BadgerConfig = {
 		{
 			type: "script",
 			path: "scripts/test_changed",
+			fileFilter: ["*.test.ts", "*.spec.ts", "*.test.js", "*.spec.js"],
 			failurePrompt: "Fix the test failures identified above and continue working.",
 		},
 	],
@@ -417,7 +420,17 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			for (const entry of currentConfig.checksFast) {
 				if (signal.aborted) return;
 
-				const result = await runScript(pi, cwd, entry.path, filesToCheck);
+				// Filter changed files through fileFilter if configured
+				let entryFiles = filesToCheck;
+				if (entry.fileFilter && entry.fileFilter.length > 0) {
+					const filterMatch = picomatch(entry.fileFilter, { dot: true });
+					entryFiles = filesToCheck.filter((f) => filterMatch(f.replace(/\\/g, "/")));
+				}
+
+				// Skip this entry if no matching files changed
+				if (entryFiles.length === 0) continue;
+
+				const result = await runScript(pi, cwd, entry.path, entryFiles);
 
 				if (signal.aborted) return;
 
@@ -427,7 +440,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 						entry.failurePrompt || DEFAULT_FAST_FAILURE_PROMPT;
 					const message = `Badger fast check failed (${
 						entry.path
-					}) on files: ${filesToCheck.join(", ")}\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`;
+					}) on files: ${entryFiles.join(", ")}\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`;
 
 					pi.sendMessage(
 						{
@@ -585,7 +598,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 4. Each checksFast script should operate only on changed files (passed as arguments)
 5. Make the scripts executable with chmod +x
 
-checksFast entries should target specific concerns (lint, typecheck, per-file tests) for clear failure messages. All checksFast scripts receive changed file paths as arguments.`;
+checksFast entries target specific concerns (lint, typecheck, per-file tests) and use \`fileFilter\` to route only relevant changed files to each script. Entries without \`fileFilter\` receive all changed files. If no files match a \`fileFilter\`, that entry is skipped entirely.`;
 			}
 
 			// Strip YAML frontmatter from skill content

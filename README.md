@@ -41,12 +41,6 @@ Run the setup command to analyze your project and create configuration:
 /badger-setup
 ```
 
-Or use the prompt template:
-
-```
-/badger-init
-```
-
 This will:
 - Detect your language, test framework, and linter
 - Propose appropriate defaults

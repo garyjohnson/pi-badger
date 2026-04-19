@@ -111,18 +111,18 @@ Create executable scripts in the project's `scripts/` directory. Each script sho
 
 #### `scripts/lint` — Lint changed files
 
-Runs the linter on only the changed files:
+Receives changed file paths as arguments, filters to lintable files, and runs the linter on only those:
 
 ```bash
 #!/usr/bin/env bash
-# Badger lint check — operates on changed files only
-# Arguments: list of changed file paths
+# Badger lint check — lints changed files only
+# Arguments: changed file paths (from Badger)
 # Exit 0 on success, non-zero on failure
 set -euo pipefail
 
 CHANGED_FILES=("$@")
 
-# Filter to source files only (adapt glob for your project)
+# Filter to lintable source files (adapt for your project)
 SOURCE_FILES=()
 for f in "${CHANGED_FILES[@]}"; do
   case "$f" in
@@ -139,65 +139,49 @@ echo "Linting ${#SOURCE_FILES[@]} file(s)..."
 npx eslint "${SOURCE_FILES[@]}"
 ```
 
-#### `scripts/typecheck` — Type check (project-wide or per-file)
+#### `scripts/typecheck` — Type check
 
-Most type checkers don't support per-file narrow well; run project-wide but keep it in checksFast for speed:
+Receives changed file paths as arguments (for reference), but most type checkers run project-wide:
 
 ```bash
 #!/usr/bin/env bash
 # Badger typecheck — runs type checking
-# Arguments: list of changed file paths (ignored by tsc, which checks the whole project)
+# Arguments: changed file paths (from Badger; ignored by tsc)
 # Exit 0 on success, non-zero on failure
 set -euo pipefail
 
-echo "Running type checks..."
+CHANGED_FILES=("$@")
+echo "Running type checks (${#CHANGED_FILES[@]} file(s) changed)..."
 npx tsc --noEmit
 ```
 
 #### `scripts/test_changed` — Run tests for changed files
 
-Runs only the tests that cover the changed files. The script should map changed source files to their corresponding test files:
+Receives changed file paths as arguments. Use the test runner's built-in related-file mode to find and run affected tests — don't try to manually map source files to test files:
 
 ```bash
 #!/usr/bin/env bash
 # Badger per-file test — runs tests related to changed files
-# Arguments: list of changed file paths
+# Arguments: changed file paths (from Badger)
 # Exit 0 on success, non-zero on failure
 set -euo pipefail
 
 CHANGED_FILES=("$@")
 
-# Find test files corresponding to changed source files
-# Projects use different conventions — adapt the pattern:
-#   Jest/Vitest: src/foo.ts → src/foo.test.ts or src/foo.test.ts
-#   Pytest: src/foo.py → tests/test_foo.py
-#   Rust: src/foo.rs → tests/foo.rs or #[cfg(test)] inline
-TEST_FILES=()
-for f in "${CHANGED_FILES[@]}"; do
-  # Example: src/foo.ts → find src/foo.test.ts, src/foo.spec.ts, test/foo.test.ts
-  for ext in .test.ts .test.js .spec.ts .spec.js; do
-    candidate="${f%.*}${ext}"
-    if [ -f "$candidate" ]; then
-      TEST_FILES+=("$candidate")
-    fi
-  done
-  # Also check if the changed file IS a test file
-  case "$f" in
-    *.test.*|*.spec.*) TEST_FILES+=("$f") ;;
-  esac
-done
-
-# Remove duplicates
-IFS=$'\n' TEST_FILES=($(sort -u <<<"${TEST_FILES[*]}")); unset IFS
-
-if [ ${#TEST_FILES[@]} -eq 0 ]; then
-  echo "No test files found for changed files"
+if [ ${#CHANGED_FILES[@]} -eq 0 ]; then
+  echo "No changed files to test"
   exit 0
 fi
 
-echo "Running ${#TEST_FILES[@]} test file(s)..."
-npx vitest run "${TEST_FILES[@]}"
+echo "Running tests related to ${#CHANGED_FILES[@]} changed file(s)..."
+# Vitest/Jest can find related tests given source files:
+npx vitest run --related "${CHANGED_FILES[@]}"
+# For runners without --related, you can filter to test files:
+#   npx jest --findRelatedTests --changed "${CHANGED_FILES[@]}"
+#   pytest "${CHANGED_FILES[@]}"
 ```
+
+Only include entries for tools the project actually uses. If there's no linter, don't create a lint entry. If there's no type checker, don't create a typecheck entry.
 
 #### `scripts/check` — Full test suite
 

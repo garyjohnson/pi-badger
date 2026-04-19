@@ -146,13 +146,13 @@ Prompt entries are fire-and-forget — they send instructions to pi but don't ha
 
 ### `scripts/lint`
 
-Receives changed file paths as arguments. Runs the linter on only the changed source files.
+Receives changed file paths as arguments. Filters to lintable files and runs the linter on only those.
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 CHANGED_FILES=("$@")
-# Filter to source files, then lint only those
+# Filter to source files
 SOURCE_FILES=()
 for f in "${CHANGED_FILES[@]}"; do
   case "$f" in
@@ -165,7 +165,7 @@ npx eslint "${SOURCE_FILES[@]}"
 
 ### `scripts/typecheck`
 
-Receives changed file paths as arguments (may be ignored by type checkers that run project-wide). Runs type checking.
+Receives changed file paths as arguments (for reference). Most type checkers run project-wide.
 
 ```bash
 #!/usr/bin/env bash
@@ -175,19 +175,14 @@ npx tsc --noEmit
 
 ### `scripts/test_changed`
 
-Receives changed file paths as arguments. Runs only the tests that cover the changed files. Maps source files to their corresponding test files.
+Receives changed file paths as arguments. Uses the test runner's built-in related-file mode to find and run affected tests — don't manually map source files to test files.
 
 ```bash
 #!/usr/bin/env bash
 set -euo pipefail
 CHANGED_FILES=("$@")
-# Find test files corresponding to changed source files
-TEST_FILES=()
-for f in "${CHANGED_FILES[@]}"; do
-  case "$f" in *.test.*|*.spec.*) TEST_FILES+=("$f") ;; esac
-done
-[ ${#TEST_FILES[@]} -eq 0 ] && exit 0
-npx vitest run "${TEST_FILES[@]}"
+[ ${#CHANGED_FILES[@]} -eq 0 ] && exit 0
+npx vitest run --related "${CHANGED_FILES[@]}"
 ```
 
 ### `scripts/check`

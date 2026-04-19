@@ -16,6 +16,7 @@ import * as url from "node:url";
 import * as crypto from "node:crypto";
 import picomatch from "picomatch";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Text } from "@mariozechner/pi-tui";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -48,6 +49,7 @@ interface BadgerConfig {
 	watchPatterns: string[];
 	excludePatterns: string[];
 	notifyWithoutConfig: boolean;
+	debug: boolean;
 	checksFast: FastCheckEntry[];
 	checks: CheckEntry[];
 	release?: ReleaseEntry | null;
@@ -66,6 +68,7 @@ const DEFAULT_CONFIG: BadgerConfig = {
 	watchPatterns: ["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"],
 	excludePatterns: [],
 	notifyWithoutConfig: true,
+	debug: false,
 	checksFast: [
 		{
 			type: "script",
@@ -115,6 +118,99 @@ const SYSTEM_PROMPT = `You are working with the Badger quality gate extension. F
 5. Keep working until Badger is satisfied or the user intervenes.`;
 
 // ---------------------------------------------------------------------------
+// Debug Logger
+// ---------------------------------------------------------------------------
+
+class DebugLogger {
+	private logPath: string;
+	private enabled: boolean;
+	private stream: fs.WriteStream | null = null;
+
+	constructor(cwd: string, enabled: boolean) {
+		this.enabled = enabled;
+		this.logPath = path.join(cwd, ".pi", "badger-debug.log");
+		if (this.enabled) {
+			this.open();
+		}
+	}
+
+	get isEnabled(): boolean {
+		return this.enabled;
+	}
+
+	setEnabled(enabled: boolean, cwd: string): void {
+		const changed = this.enabled !== enabled;
+		this.enabled = enabled;
+		if (changed) {
+			if (this.enabled) {
+				this.logPath = path.join(cwd, ".pi", "badger-debug.log");
+				this.open();
+				this.log("session", "Debug mode enabled");
+			} else {
+				this.log("session", "Debug mode disabled");
+				this.close();
+			}
+		}
+	}
+
+	private open(): void {
+		try {
+			const dir = path.dirname(this.logPath);
+			if (!fs.existsSync(dir)) {
+				fs.mkdirSync(dir, { recursive: true });
+			}
+			this.stream = fs.createWriteStream(this.logPath, { flags: "a" });
+		} catch {
+			this.stream = null;
+		}
+	}
+
+	private close(): void {
+		if (this.stream) {
+			this.stream.end();
+			this.stream = null;
+		}
+	}
+
+	log(category: string, message: string, details?: Record<string, unknown>): void {
+		if (!this.enabled) return;
+
+		const timestamp = new Date().toISOString();
+		const prefix = `[${timestamp}] [${category}]`;
+		let line = details
+			? `${prefix} ${message} ${JSON.stringify(details, null, 2)}`
+			: `${prefix} ${message}`;
+
+		// Also write to stderr so it shows in pi's process output
+		process.stderr.write(`🐛 ${line}\n`);
+
+		if (this.stream) {
+			this.stream.write(line + "\n");
+		}
+	}
+
+	getLogPath(): string {
+		return this.logPath;
+	}
+
+	getLogContent(): string {
+		try {
+			return fs.readFileSync(this.logPath, "utf-8");
+		} catch {
+			return "";
+		}
+	}
+
+	clearLog(): void {
+		try {
+			fs.writeFileSync(this.logPath, "");
+		} catch {
+			// ignore
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -128,6 +224,7 @@ function loadConfig(cwd: string): BadgerConfig | null {
 			watchPatterns: parsed.watchPatterns ?? DEFAULT_CONFIG.watchPatterns,
 			excludePatterns: parsed.excludePatterns ?? DEFAULT_CONFIG.excludePatterns,
 			notifyWithoutConfig: parsed.notifyWithoutConfig ?? DEFAULT_CONFIG.notifyWithoutConfig,
+			debug: parsed.debug ?? DEFAULT_CONFIG.debug,
 			checksFast: parsed.checksFast ?? DEFAULT_CONFIG.checksFast,
 			checks: parsed.checks ?? DEFAULT_CONFIG.checks,
 			release: parsed.release === null ? null : (parsed.release ?? DEFAULT_CONFIG.release),
@@ -282,47 +379,67 @@ function rebuildHashMap(
 function diffHashMaps(
 	oldMap: Map<string, FileHash>,
 	newMap: Map<string, FileHash>,
-): string[] {
-	const changed: string[] = [];
+): { filePath: string; changeType: "added" | "modified" | "deleted"; oldHash?: string; newHash?: string }[] {
+	const changes: { filePath: string; changeType: "added" | "modified" | "deleted"; oldHash?: string; newHash?: string }[] = [];
 
 	// New or modified files
 	for (const [filePath, info] of newMap) {
 		const oldInfo = oldMap.get(filePath);
-		if (!oldInfo || oldInfo.hash !== info.hash) {
-			changed.push(filePath);
+		if (!oldInfo) {
+			changes.push({ filePath, changeType: "added", newHash: info.hash });
+		} else if (oldInfo.hash !== info.hash) {
+			changes.push({ filePath, changeType: "modified", oldHash: oldInfo.hash, newHash: info.hash });
 		}
 	}
 
 	// Deleted files
 	for (const filePath of oldMap.keys()) {
 		if (!newMap.has(filePath)) {
-			changed.push(filePath);
+			const oldInfo = oldMap.get(filePath)!;
+			changes.push({ filePath, changeType: "deleted", oldHash: oldInfo.hash });
 		}
 	}
 
-	return changed;
+	return changes;
 }
 
-/** Run a script and return exit code and output */
+/** Get just file paths from diff results */
+function diffFilePaths(changes: ReturnType<typeof diffHashMaps>): string[] {
+	return changes.map(c => c.filePath);
+}
+
+/** Run a script and return exit code and output. Pass signal to support cancellation. */
 async function runScript(
 	pi: ExtensionAPI,
 	cwd: string,
 	scriptPath: string,
 	args: string[] = [],
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+	signal?: AbortSignal,
+): Promise<{ exitCode: number; stdout: string; stderr: string; aborted: boolean }> {
 	const fullPath = path.resolve(cwd, scriptPath);
 	try {
-		const result = await pi.exec(fullPath, args, { cwd });
+		const result = await pi.exec(fullPath, args, { cwd, signal });
 		return {
 			exitCode: result.code ?? 1,
 			stdout: result.stdout,
 			stderr: result.stderr,
+			aborted: false,
 		};
 	} catch (err) {
+		// Check if the error is due to abort
+		if (signal?.aborted) {
+			return {
+				exitCode: -1,
+				stdout: "",
+				stderr: "Aborted",
+				aborted: true,
+			};
+		}
 		return {
 			exitCode: 1,
 			stdout: "",
 			stderr: err instanceof Error ? err.message : String(err),
+			aborted: false,
 		};
 	}
 }
@@ -338,6 +455,10 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	let fastCheckAbortController: AbortController | null = null;
 	let isRunningChecks = false;
 	let isRunningRelease = false;
+	let debugLog: DebugLogger;
+
+	// Debug logger is initialized after config load; create a disabled placeholder
+	debugLog = new DebugLogger("", false);
 
 	// -----------------------------------------------------------------------
 	// Session start — load config, build initial hash map
@@ -345,7 +466,14 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	pi.on("session_start", async (_event, ctx) => {
 		config = loadConfig(ctx.cwd);
 
+		// Check env var override
+		const envDebug = process.env.BADGER_DEBUG === "1" || process.env.BADGER_DEBUG === "true";
+
 		if (!config) {
+			// Initialize logger even without config (for env var debugging)
+			debugLog = new DebugLogger(ctx.cwd, envDebug);
+			debugLog.log("config", "No badger.json found", { cwd: ctx.cwd, envDebug });
+
 			if (DEFAULT_CONFIG.notifyWithoutConfig) {
 				ctx.ui.notify(
 					"Badger is installed but not configured. Run /badger-setup to get started.",
@@ -354,6 +482,22 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			}
 			return;
 		}
+
+		// Env var overrides config
+		const debugEnabled = envDebug || config.debug;
+		debugLog = new DebugLogger(ctx.cwd, debugEnabled);
+
+		debugLog.log("session_start", "Session starting", {
+			cwd: ctx.cwd,
+			debug: debugEnabled,
+			envDebug,
+			configDebug: config.debug,
+			watchPatterns: config.watchPatterns,
+			excludePatterns: config.excludePatterns,
+			checksFastCount: config.checksFast.length,
+			checksCount: config.checks.length,
+			hasRelease: !!config.release,
+		});
 
 		// Build initial hash map of watched files
 		currentHashMap = buildHashMap(
@@ -365,7 +509,16 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		lastPassHashMap = new Map(currentHashMap);
 
 		const fileCount = currentHashMap.size;
-		ctx.ui.notify(`Badger active — watching ${fileCount} file(s)`, "info");
+		debugLog.log("session_start", "Initial hash map built", {
+			fileCount,
+			files: fileCount <= 50 ? Array.from(currentHashMap.keys()) : `${fileCount} files (too many to list)`,
+		});
+
+		ctx.ui.notify(`Badger active — watching ${fileCount} file(s)${debugEnabled ? " (debug)" : ""}`, "info");
+
+		if (debugEnabled) {
+			ctx.ui.setStatus("badger-debug", "🐛 Debug ON");
+		}
 	});
 
 	// -----------------------------------------------------------------------
@@ -373,6 +526,8 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	// -----------------------------------------------------------------------
 	pi.on("before_agent_start", async (event) => {
 		if (!config) return {};
+
+		debugLog.log("before_agent_start", "Injecting Badger system prompt");
 
 		return {
 			systemPrompt:
@@ -386,7 +541,15 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	// Turn end — run checksFast if files changed
 	// -----------------------------------------------------------------------
 	pi.on("turn_end", async (_event, ctx) => {
-		if (!config || config.checksFast.length === 0) return;
+		if (!config || config.checksFast.length === 0) {
+			debugLog.log("turn_end", "Skipping fast checks", {
+				hasConfig: !!config,
+				checksFastCount: config?.checksFast.length ?? 0,
+			});
+			return;
+		}
+
+		debugLog.log("turn_end", "Checking for changed files");
 
 		// Rebuild hash map efficiently (only re-hash changed files)
 		const newHashMap = rebuildHashMap(
@@ -395,15 +558,31 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			config.excludePatterns,
 			currentHashMap,
 		);
-		const changedFiles = diffHashMaps(currentHashMap, newHashMap);
 
-		// Update current hash map regardless of whether we run checks
+		const changes = diffHashMaps(currentHashMap, newHashMap);
+		const changedFiles = diffFilePaths(changes);
 		currentHashMap = newHashMap;
 
-		if (changedFiles.length === 0) return;
+		debugLog.log("turn_end", "File change detection", {
+			changedCount: changedFiles.length,
+			changes: changes.map(c => ({
+				file: c.filePath,
+				type: c.changeType,
+				...(c.oldHash ? { oldHash: c.oldHash } : {}),
+				...(c.newHash ? { newHash: c.newHash } : {}),
+			})),
+		});
+
+		if (changedFiles.length === 0) {
+			debugLog.log("turn_end", "No files changed, skipping fast checks");
+			return;
+		}
 
 		// Abort any in-flight fast checks — stale results are no longer relevant
 		if (fastCheckAbortController) {
+			debugLog.log("turn_end", "Aborting previous fast check run", {
+				reason: "new changes detected, previous results would be stale",
+			});
 			fastCheckAbortController.abort();
 		}
 
@@ -415,10 +594,18 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		const filesToCheck = [...changedFiles];
 		const cwd = ctx.cwd;
 
+		debugLog.log("turn_end", "Starting fast checks", {
+			filesToCheck,
+			entryCount: currentConfig.checksFast.length,
+		});
+
 		// Run fast checks asynchronously (don't block the next turn)
 		(async () => {
 			for (const entry of currentConfig.checksFast) {
-				if (signal.aborted) return;
+				if (signal.aborted) {
+					debugLog.log("fast_check", "Cancelled before execution — new changes superseded this run", { path: entry.path });
+					return;
+				}
 
 				// Filter changed files through fileFilter if configured
 				let entryFiles = filesToCheck;
@@ -427,12 +614,45 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					entryFiles = filesToCheck.filter((f) => filterMatch(f.replace(/\\/g, "/")));
 				}
 
+				debugLog.log("fast_check", "Evaluating entry", {
+					path: entry.path,
+					fileFilter: entry.fileFilter,
+					matchingFiles: entryFiles,
+					skipped: entryFiles.length === 0,
+				});
+
 				// Skip this entry if no matching files changed
 				if (entryFiles.length === 0) continue;
 
-				const result = await runScript(pi, cwd, entry.path, entryFiles);
+				const startTime = Date.now();
+				const result = await runScript(pi, cwd, entry.path, entryFiles, signal);
+				const elapsed = Date.now() - startTime;
 
-				if (signal.aborted) return;
+				if (result.aborted) {
+					debugLog.log("fast_check", "Cancelled during execution — new changes superseded this run", {
+						path: entry.path,
+						elapsedMs: elapsed,
+					});
+					return;
+				}
+
+				debugLog.log("fast_check", "Script completed", {
+					path: entry.path,
+					exitCode: result.exitCode,
+					elapsedMs: elapsed,
+					stdoutLength: result.stdout.length,
+					stderrLength: result.stderr.length,
+					stdout: result.stdout.length <= 500 ? result.stdout : result.stdout.slice(0, 500) + "...[truncated]",
+					stderr: result.stderr.length <= 500 ? result.stderr : result.stderr.slice(0, 500) + "...[truncated]",
+				});
+
+				if (signal.aborted) {
+					debugLog.log("fast_check", "Cancelled — new changes detected after script finished", {
+						path: entry.path,
+						exitCode: result.exitCode,
+					});
+					return;
+				}
 
 				if (result.exitCode !== 0) {
 					const output = result.stderr || result.stdout;
@@ -441,6 +661,12 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					const message = `Badger fast check failed (${
 						entry.path
 					}) on files: ${entryFiles.join(", ")}\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`;
+
+					debugLog.log("fast_check", "Failed — short-circuiting remaining entries", {
+						path: entry.path,
+						exitCode: result.exitCode,
+						files: entryFiles,
+					});
 
 					pi.sendMessage(
 						{
@@ -453,7 +679,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					return; // Short-circuit on first failure
 				}
 			}
-			// All fast checks passed — silent
+			debugLog.log("fast_check", "All fast checks passed");
 		})();
 	});
 
@@ -462,9 +688,20 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	// -----------------------------------------------------------------------
 	pi.on("agent_end", async (_event, ctx) => {
 		if (!config) return;
-		if (isRunningChecks || isRunningRelease) return;
+		if (isRunningChecks || isRunningRelease) {
+			debugLog.log("agent_end", "Skipping — checks or release already in progress", {
+				isRunningChecks,
+				isRunningRelease,
+			});
+			return;
+		}
 
-		if (config.checks.length === 0 && !config.release) return;
+		if (config.checks.length === 0 && !config.release) {
+			debugLog.log("agent_end", "No checks or release configured");
+			return;
+		}
+
+		debugLog.log("agent_end", "Checking for changes since last pass");
 
 		// Rebuild hash map and check if files changed since last pass
 		const newHashMap = rebuildHashMap(
@@ -475,12 +712,28 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		);
 		currentHashMap = newHashMap;
 
-		const changed = diffHashMaps(lastPassHashMap, newHashMap);
+		const changes = diffHashMaps(lastPassHashMap, newHashMap);
+		const changed = diffFilePaths(changes);
 
-		if (changed.length === 0) return;
+		debugLog.log("agent_end", "Changes since last pass", {
+			changedCount: changed.length,
+			changes: changes.map(c => ({
+				file: c.filePath,
+				type: c.changeType,
+			})),
+		});
+
+		if (changed.length === 0) {
+			debugLog.log("agent_end", "No changes since last pass — skipping checks");
+			return;
+		}
 
 		// Files changed since last pass — run checks
 		isRunningChecks = true;
+		debugLog.log("agent_end", "Starting full checks", {
+			changedFiles: changed,
+			entryCount: config.checks.length,
+		});
 
 		try {
 			// Run checks entries, collecting all failures from script entries
@@ -488,7 +741,19 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 			for (const entry of config.checks) {
 				if (entry.type === "script" && entry.path) {
+					const startTime = Date.now();
 					const result = await runScript(pi, ctx.cwd, entry.path);
+					const elapsed = Date.now() - startTime;
+
+					debugLog.log("agent_check", "Script completed", {
+						path: entry.path,
+						exitCode: result.exitCode,
+						elapsedMs: elapsed,
+						stdoutLength: result.stdout.length,
+						stderrLength: result.stderr.length,
+						stdout: result.stdout.length <= 500 ? result.stdout : result.stdout.slice(0, 500) + "...[truncated]",
+						stderr: result.stderr.length <= 500 ? result.stderr : result.stderr.slice(0, 500) + "...[truncated]",
+					});
 
 					if (result.exitCode !== 0) {
 						const output = result.stderr || result.stdout;
@@ -499,6 +764,10 @@ export default function badgerExtension(pi: ExtensionAPI) {
 						);
 					}
 				} else if (entry.type === "prompt" && entry.content) {
+					debugLog.log("agent_check", "Sending prompt entry", {
+						contentLength: entry.content.length,
+						contentPreview: entry.content.slice(0, 200),
+					});
 					// Prompt entries are fire-and-forget — no pass/fail gate
 					pi.sendMessage(
 						{
@@ -513,6 +782,9 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 			if (failures.length > 0) {
 				const message = `Badger checks failed:\n\n${failures.join("\n\n")}`;
+				debugLog.log("agent_check", "Checks failed", {
+					failureCount: failures.length,
+				});
 				pi.sendUserMessage(message);
 				// Don't update lastPassHashMap — will re-check after pi fixes
 				return;
@@ -520,6 +792,9 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 			// All checks passed — update last-pass hash map
 			lastPassHashMap = new Map(newHashMap);
+			debugLog.log("agent_check", "All checks passed — updated lastPassHashMap", {
+				fileCount: lastPassHashMap.size,
+			});
 
 			// Notify user of passing checks
 			ctx.ui.notify("✓ All checks passed", "info");
@@ -527,13 +802,27 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			// Run release
 			if (config.release) {
 				isRunningRelease = true;
+				debugLog.log("agent_release", "Starting release");
+
 				try {
 					if (config.release.type === "script" && config.release.path) {
+						const startTime = Date.now();
 						const result = await runScript(
 							pi,
 							ctx.cwd,
 							config.release.path,
 						);
+						const elapsed = Date.now() - startTime;
+
+						debugLog.log("agent_release", "Script completed", {
+							path: config.release.path,
+							exitCode: result.exitCode,
+							elapsedMs: elapsed,
+							stdoutLength: result.stdout.length,
+							stderrLength: result.stderr.length,
+							stdout: result.stdout.length <= 500 ? result.stdout : result.stdout.slice(0, 500) + "...[truncated]",
+							stderr: result.stderr.length <= 500 ? result.stderr : result.stderr.slice(0, 500) + "...[truncated]",
+						});
 
 						if (result.exitCode !== 0) {
 							const output = result.stderr || result.stdout;
@@ -541,6 +830,9 @@ export default function badgerExtension(pi: ExtensionAPI) {
 								config.release.failurePrompt ||
 								DEFAULT_RELEASE_FAILURE_PROMPT;
 							ctx.ui.notify("✗ Release failed", "error");
+							debugLog.log("agent_release", "Release failed", {
+								exitCode: result.exitCode,
+							});
 							// Release failure is for the user only — pi doesn't fix it
 							pi.sendMessage(
 								{
@@ -554,11 +846,13 @@ export default function badgerExtension(pi: ExtensionAPI) {
 							);
 						} else {
 							ctx.ui.notify("✓ Released successfully", "info");
+							debugLog.log("agent_release", "Release succeeded");
 						}
 					} else if (
 						config.release.type === "prompt" &&
 						config.release.content
 					) {
+						debugLog.log("agent_release", "Sending release prompt");
 						pi.sendMessage(
 							{
 								customType: "badger-release-prompt",
@@ -625,6 +919,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			}
 
 			ctx.ui.notify("Running Badger checks...", "info");
+			debugLog.log("manual_check", "Manually triggered full checks");
 
 			isRunningChecks = true;
 			try {
@@ -632,7 +927,15 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 				for (const entry of config.checks) {
 					if (entry.type === "script" && entry.path) {
+						const startTime = Date.now();
 						const result = await runScript(pi, ctx.cwd, entry.path);
+						const elapsed = Date.now() - startTime;
+
+						debugLog.log("manual_check", "Script completed", {
+							path: entry.path,
+							exitCode: result.exitCode,
+							elapsedMs: elapsed,
+						});
 
 						if (result.exitCode !== 0) {
 							const output = result.stderr || result.stdout;
@@ -652,6 +955,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				}
 
 				ctx.ui.notify("✓ All checks passed", "info");
+				debugLog.log("manual_check", "All checks passed");
 
 				// Update last-pass hash map
 				lastPassHashMap = buildHashMap(
@@ -685,15 +989,24 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			}
 
 			ctx.ui.notify("Running Badger release...", "info");
+			debugLog.log("manual_release", "Manually triggered release");
 
 			isRunningRelease = true;
 			try {
 				if (config.release.type === "script" && config.release.path) {
+					const startTime = Date.now();
 					const result = await runScript(
 						pi,
 						ctx.cwd,
 						config.release.path,
 					);
+					const elapsed = Date.now() - startTime;
+
+					debugLog.log("manual_release", "Script completed", {
+						path: config.release.path,
+						exitCode: result.exitCode,
+						elapsedMs: elapsed,
+					});
 
 					if (result.exitCode !== 0) {
 						const output = result.stderr || result.stdout;
@@ -731,6 +1044,137 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				isRunningRelease = false;
 			}
 		},
+	});
+
+	// -----------------------------------------------------------------------
+	// /badger-debug command — toggle debug mode, view log, clear log
+	// -----------------------------------------------------------------------
+	pi.registerCommand("badger-debug", {
+		description: "Toggle Badger debug mode. Use 'on'/'off' to toggle, 'log' to view, 'clear' to clear log",
+		handler: async (args, ctx) => {
+			const subcommand = (args || "").trim().toLowerCase();
+
+			if (!config) {
+				ctx.ui.notify(
+					"Badger is not configured. Run /badger-setup first.",
+					"warning",
+				);
+				return;
+			}
+
+			if (subcommand === "off") {
+				debugLog.setEnabled(false, ctx.cwd);
+				config.debug = false;
+				ctx.ui.setStatus("badger-debug", undefined);
+				ctx.ui.notify("🐛 Badger debug mode OFF", "info");
+				return;
+			}
+
+			if (subcommand === "clear") {
+				debugLog.clearLog();
+				ctx.ui.notify("🐛 Debug log cleared", "info");
+				return;
+			}
+
+			if (subcommand === "log") {
+				const content = debugLog.getLogContent();
+				if (!content) {
+					ctx.ui.notify("Debug log is empty", "info");
+				} else {
+					const lastLines = content.split("\n").slice(-100).join("\n");
+					pi.sendUserMessage(`**Badger debug log** (last 100 lines):\n\n\`\`\`\n${lastLines}\n\`\`\``);
+				}
+				return;
+			}
+
+			if (subcommand === "status") {
+				const lines = [
+					`🐛 Badger Debug Status`,
+					`  Enabled: ${debugLog.isEnabled}`,
+					`  Log path: ${debugLog.getLogPath()}`,
+					`  Watch patterns: ${config.watchPatterns.join(", ")}`,
+					`  Exclude patterns: ${config.excludePatterns.join(", ") || "(none)"}`,
+					`  Files tracked: ${currentHashMap.size}`,
+					`  Last-pass files: ${lastPassHashMap.size}`,
+					`  Fast checks: ${config.checksFast.length} entries`,
+					`  Full checks: ${config.checks.length} entries`,
+					`  Has release: ${!!config.release}`,
+					`  Running checks: ${isRunningChecks}`,
+					`  Running release: ${isRunningRelease}`,
+				];
+
+				// Compute pending changes since last pass
+				if (currentHashMap.size > 0) {
+					const changes = diffHashMaps(lastPassHashMap, currentHashMap);
+					if (changes.length > 0) {
+						lines.push(`  Pending changes: ${changes.length}`);
+						for (const c of changes.slice(0, 20)) {
+							lines.push(`    ${c.changeType}: ${c.filePath}`);
+						}
+						if (changes.length > 20) {
+							lines.push(`    ... and ${changes.length - 20} more`);
+						}
+					} else {
+						lines.push(`  Pending changes: 0 (all clear)`);
+					}
+				}
+
+				pi.sendUserMessage(lines.join("\n"));
+				return;
+			}
+
+			// Default: toggle on
+			if (!debugLog.isEnabled) {
+				debugLog.setEnabled(true, ctx.cwd);
+				config.debug = true;
+				ctx.ui.setStatus("badger-debug", "🐛 Debug ON");
+				debugLog.log("debug", "Debug mode enabled via /badger-debug command");
+				ctx.ui.notify("🐛 Badger debug mode ON — logging to .pi/badger-debug.log", "info");
+			} else {
+				// Toggle off
+				debugLog.setEnabled(false, ctx.cwd);
+				config.debug = false;
+				ctx.ui.setStatus("badger-debug", undefined);
+				ctx.ui.notify("🐛 Badger debug mode OFF", "info");
+			}
+		},
+	});
+
+	// -----------------------------------------------------------------------
+	// Register message renderer for debug-friendly display of badger messages
+	// -----------------------------------------------------------------------
+	pi.registerMessageRenderer("badger-fast-failure", (message, options, theme) => {
+		const { expanded } = options;
+		let text = theme.fg("error", "☠ Badger fast check failed");
+		if (expanded && message.content) {
+			text += "\n" + message.content;
+		}
+		return new Text(text, 0, 0);
+	});
+
+	pi.registerMessageRenderer("badger-release-failure", (message, options, theme) => {
+		const { expanded } = options;
+		let text = theme.fg("error", "☠ Badger release failed");
+		if (expanded && message.content) {
+			text += "\n" + message.content;
+		}
+		return new Text(text, 0, 0);
+	});
+
+	pi.registerMessageRenderer("badger-check-prompt", (message, options, theme) => {
+		let text = theme.fg("accent", "📋 Badger check prompt");
+		if (options.expanded && message.content) {
+			text += "\n" + message.content;
+		}
+		return new Text(text, 0, 0);
+	});
+
+	pi.registerMessageRenderer("badger-release-prompt", (message, options, theme) => {
+		let text = theme.fg("accent", "📋 Badger release prompt");
+		if (options.expanded && message.content) {
+			text += "\n" + message.content;
+		}
+		return new Text(text, 0, 0);
 	});
 
 	// -----------------------------------------------------------------------

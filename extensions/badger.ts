@@ -721,8 +721,11 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 					debugLog.log("fast_check", "Failed — short-circuiting remaining entries", {
 						label: entryLabel,
+						type: entry.type,
 						exitCode: result.exitCode,
 						files: entryFiles,
+						output: output.slice(0, 1000),
+						message: message.slice(0, 500),
 					});
 
 					pi.sendMessage(
@@ -799,6 +802,10 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			// Run checks entries, collecting all failures from script entries
 			const failures: string[] = [];
 
+			debugLog.log("agent_check", "Processing check entries", {
+				entries: config.checks.map(e => ({ type: e.type, label: e.type === "command" ? e.command : (e.type === "prompt" ? "prompt" : e.path) }))
+			});
+
 			for (const entry of config.checks) {
 				const entryLabel = entry.type === "command" ? entry.command : entry.path;
 
@@ -869,6 +876,9 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				const message = `Badger checks failed:\n\n${failures.join("\n\n")}`;
 				debugLog.log("agent_check", "Checks failed", {
 					failureCount: failures.length,
+					failures: failures.map(f => ({
+						message: f.slice(0, 300),
+						})),
 				});
 				pi.sendUserMessage(message);
 				return;

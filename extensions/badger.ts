@@ -880,7 +880,14 @@ export default function badgerExtension(pi: ExtensionAPI) {
 						message: f.slice(0, 300),
 						})),
 				});
-				pi.sendUserMessage(message);
+				pi.sendMessage(
+				{
+					customType: "badger-check-failure",
+					content: message,
+					display: true,
+				},
+				{ deliverAs: "steer", triggerTurn: true },
+				);
 				return;
 			}
 
@@ -1108,7 +1115,14 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 				if (failures.length > 0) {
 					const message = `Badger checks failed:\n\n${failures.join("\n\n")}`;
-					pi.sendUserMessage(message);
+					pi.sendMessage(
+						{
+							customType: "badger-check-failure",
+							content: message,
+							display: true,
+						},
+						{ triggerTurn: true },
+					);
 					return;
 				}
 
@@ -1339,6 +1353,15 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 	pi.registerMessageRenderer("badger-fast-failure", (message, options, theme) => {
 		const { expanded } = options;
 		let text = theme.fg("error", "☠ Badger fast check failed");
+		if (expanded && message.content) {
+			text += "\n" + message.content;
+		}
+		return new Text(text, 0, 0);
+	});
+
+	pi.registerMessageRenderer("badger-check-failure", (message, options, theme) => {
+		const { expanded } = options;
+		let text = theme.fg("error", "☠ Badger check failed");
 		if (expanded && message.content) {
 			text += "\n" + message.content;
 		}

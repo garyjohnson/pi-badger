@@ -184,9 +184,6 @@ class DebugLogger {
 			? `${prefix} ${message} ${JSON.stringify(details, null, 2)}`
 			: `${prefix} ${message}`;
 
-		// Also write to stderr so it shows in pi's process output
-		process.stderr.write(`🐛 ${line}\n`);
-
 		if (this.stream) {
 			this.stream.write(line + "\n");
 		}
@@ -501,7 +498,7 @@ function buildCommand(
 export default function badgerExtension(pi: ExtensionAPI) {
 	let config: BadgerConfig | null = null;
 	let currentHashMap = new Map<string, FileHash>();
-	let lastPassHashMap = new Map<string, FileHash>();
+	let lastRunHashMap = new Map<string, FileHash>();
 	let fastCheckAbortController: AbortController | null = null;
 	let isRunningChecks = false;
 	let isRunningRelease = false;
@@ -555,8 +552,8 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			config.watchPatterns,
 			config.excludePatterns,
 		);
-		// Last-pass starts as current state — no changes to check yet
-		lastPassHashMap = new Map(currentHashMap);
+		// lastRunHashMap starts as current state — no changes to check yet
+		lastRunHashMap = new Map(currentHashMap);
 
 		const fileCount = currentHashMap.size;
 		debugLog.log("session_start", "Initial hash map built", {
@@ -772,10 +769,10 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		);
 		currentHashMap = newHashMap;
 
-		const changes = diffHashMaps(lastPassHashMap, newHashMap);
+		const changes = diffHashMaps(lastRunHashMap, newHashMap);
 		const changed = diffFilePaths(changes);
 
-		debugLog.log("agent_end", "Changes since last pass", {
+		debugLog.log("agent_end", "Changes since last checks run", {
 			changedCount: changed.length,
 			changes: changes.map(c => ({
 				file: c.filePath,
@@ -784,11 +781,14 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		});
 
 		if (changed.length === 0) {
-			debugLog.log("agent_end", "No changes since last pass — skipping checks");
+			debugLog.log("agent_end", "No changes since last checks run — skipping checks");
 			return;
 		}
 
-		// Files changed since last pass — run checks
+		// Files changed since last run — mark as checked now so next agent_end
+		// won't re-run unless the agent makes new changes (even if checks fail)
+		lastRunHashMap = new Map(newHashMap);
+
 		isRunningChecks = true;
 		debugLog.log("agent_end", "Starting full checks", {
 			changedFiles: changed,
@@ -871,14 +871,11 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					failureCount: failures.length,
 				});
 				pi.sendUserMessage(message);
-				// Don't update lastPassHashMap — will re-check after pi fixes
 				return;
 			}
 
-			// All checks passed — update last-pass hash map
-			lastPassHashMap = new Map(newHashMap);
-			debugLog.log("agent_check", "All checks passed — updated lastPassHashMap", {
-				fileCount: lastPassHashMap.size,
+			debugLog.log("agent_check", "All checks passed", {
+				fileCount: lastRunHashMap.size,
 			});
 
 			// Notify user of passing checks
@@ -1108,8 +1105,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				ctx.ui.notify("✓ All checks passed", "info");
 				debugLog.log("manual_check", "All checks passed");
 
-				// Update last-pass hash map
-				lastPassHashMap = buildHashMap(
+				lastRunHashMap = buildHashMap(
 					ctx.cwd,
 					config.watchPatterns,
 					config.excludePatterns,
@@ -1282,7 +1278,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					`  Watch patterns: ${config.watchPatterns.join(", ")}`,
 					`  Exclude patterns: ${config.excludePatterns.join(", ") || "(none)"}`,
 					`  Files tracked: ${currentHashMap.size}`,
-					`  Last-pass files: ${lastPassHashMap.size}`,
+					`  Last-run files: ${lastRunHashMap.size}`,
 					`  Fast checks: ${config.checksFast.length} entries`,
 					`  Full checks: ${config.checks.length} entries`,
 					`  Has release: ${!!config.release}`,
@@ -1292,7 +1288,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 				// Compute pending changes since last pass
 				if (currentHashMap.size > 0) {
-					const changes = diffHashMaps(lastPassHashMap, currentHashMap);
+					const changes = diffHashMaps(lastRunHashMap, currentHashMap);
 					if (changes.length > 0) {
 						lines.push(`  Pending changes: ${changes.length}`);
 						for (const c of changes.slice(0, 20)) {

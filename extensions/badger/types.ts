@@ -20,6 +20,8 @@ export interface BadgerConfig {
 	excludePatterns: string[];
 	notifyWithoutConfig: boolean;
 	debug: boolean;
+	tailLines: number;
+	showTail: boolean;
 	checksFast: CheckEntry[];
 	checks: CheckEntry[];
 	release?: CheckEntry | null;
@@ -67,4 +69,5 @@ export interface BadgerState {
 	isRunningRelease: boolean;
 	runningLabel: string | null;
 	debugEnabled: boolean;
+	showTail: boolean;
 }

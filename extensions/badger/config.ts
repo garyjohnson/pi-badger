@@ -39,6 +39,8 @@ export const DEFAULT_CONFIG: BadgerConfig = {
 	],
 	notifyWithoutConfig: true,
 	debug: false,
+	tailLines: 0,
+	showTail: false,
 	checksFast: [
 		{
 			type: "script",
@@ -116,8 +118,32 @@ export function loadConfig(cwd: string): BadgerConfig | null {
 		excludePatterns: parsed.excludePatterns ?? DEFAULT_CONFIG.excludePatterns,
 		notifyWithoutConfig: parsed.notifyWithoutConfig ?? DEFAULT_CONFIG.notifyWithoutConfig,
 		debug: parsed.debug ?? DEFAULT_CONFIG.debug,
+		tailLines: parsed.tailLines ?? DEFAULT_CONFIG.tailLines,
+		showTail: parsed.showTail ?? DEFAULT_CONFIG.showTail,
 		checksFast: parsed.checksFast ?? DEFAULT_CONFIG.checksFast,
 		checks: parsed.checks ?? DEFAULT_CONFIG.checks,
 		release: parsed.release === null ? null : (parsed.release ?? DEFAULT_CONFIG.release),
 	};
+}
+
+/**
+ * Save a BadgerConfig to .pi/badger.json in the given cwd.
+ */
+export function saveConfig(cwd: string, config: BadgerConfig): void {
+	const configPath = path.join(cwd, ".pi", "badger.json");
+	const dir = path.dirname(configPath);
+
+	try {
+		if (!fs.existsSync(dir)) {
+			fs.mkdirSync(dir, { recursive: true });
+		}
+	} catch {
+		// ignore
+	}
+
+	try {
+		fs.writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n");
+	} catch {
+		// ignore write failures
+	}
 }

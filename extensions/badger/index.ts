@@ -20,6 +20,7 @@ import { runEntry, entryLabel } from "./runner.js";
 import { registerCommands } from "./commands.js";
 import { registerRenderers } from "./renderers.js";
 import { computeStatus } from "./status.js";
+import { runCheckEntryWithOptionalTail } from "./check-runner.js";
 
 // ---------------------------------------------------------------------------
 // Extension
@@ -41,6 +42,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		isRunningRelease: false,
 		runningLabel: null,
 		debugEnabled: false,
+		showTail: false,
 	};
 
 	let debugLog: DebugLogger = new DebugLogger("", false);
@@ -74,6 +76,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		// Env var overrides config
 		const debugEnabled = envDebug || state.config.debug;
 		state.debugEnabled = debugEnabled;
+		state.showTail = state.config.showTail;
 		debugLog = new DebugLogger(ctx.cwd, debugEnabled);
 
 		debugLog.log("session_start", "Session starting", {
@@ -393,21 +396,15 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					continue;
 				}
 
-				state.runningLabel = label;
-				syncStatus(state, ctx.ui);
-				ctx.ui.notify(`🦡 Running ${label}...`, "info");
+				const result = await runCheckEntryWithOptionalTail(
+					entry, ctx.cwd, pi, state, debugLog, syncStatus, ctx, "agent_check",
+				);
 
-				const result = await runEntry(entry, ctx.cwd, pi);
-
-				state.runningLabel = null;
-				syncStatus(state, ctx.ui);
-
-				debugLog.log("agent_check", "Check completed", {
-					type: entry.type,
-					label,
-					exitCode: result.exitCode,
-					elapsedMs: result.elapsed,
-				});
+				// If user dismissed overlay, skip this entry
+				if (result.aborted && result.exitCode === -1) {
+					debugLog.log("agent_check", "Entry skipped (overlay dismissed)", { label });
+					continue;
+				}
 
 				if (result.exitCode !== 0) {
 					const output = result.stderr || result.stdout;

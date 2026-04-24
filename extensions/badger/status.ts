@@ -17,12 +17,13 @@ import type { BadgerState } from "./types.js";
  *   - Show nothing when Badger is enabled and idle.
  *
  * Format examples:
- *   "🦡 Badger running scripts/lint | 🐛 Badger DEBUG ON"
+ *   "🦡 Badger running scripts/lint | 📺 Badger TAIL"
  *   "🦡 Badger running scripts/check"
  *   "🦡 Badger DISABLED"
  *   "🦡 Badger DISABLED | 🐛 Badger DEBUG ON"
  *   "🐛 Badger DEBUG ON"
- *   undefined  (enabled and idle, debug off)
+ *   "📺 Badger TAIL"
+ *   undefined  (enabled and idle, debug off, tail off)
  */
 export function computeStatus(state: BadgerState): string | undefined {
 	if (!state.config) return undefined;
@@ -35,6 +36,10 @@ export function computeStatus(state: BadgerState): string | undefined {
 
 	if (state.runningLabel) {
 		parts.push(`🦡 Badger running ${state.runningLabel}`);
+	}
+
+	if (state.showTail) {
+		parts.push("📺 Badger TAIL");
 	}
 
 	if (state.debugEnabled) {

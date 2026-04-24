@@ -20,6 +20,7 @@ describe("computeStatus", () => {
 				excludePatterns: [],
 				notifyWithoutConfig: true,
 				debug: false,
+				tailLines: 0,
 				checksFast: [],
 				checks: [],
 				release: null,
@@ -32,6 +33,7 @@ describe("computeStatus", () => {
 			isRunningRelease: false,
 			runningLabel: null,
 			debugEnabled: false,
+			showTail: false,
 			...overrides,
 		};
 	}
@@ -74,6 +76,21 @@ describe("computeStatus", () => {
 	test("shows DISABLED with debug when no config and disabled", () => {
 		const state = makeState({ config: null, enabled: false, debugEnabled: true });
 		expect(computeStatus(state)).toBeUndefined();
+	});
+
+	test("shows TAIL when showTail is enabled", () => {
+		const state = makeState({ showTail: true });
+		expect(computeStatus(state)).toBe("📺 Badger TAIL");
+	});
+
+	test("shows running label with TAIL", () => {
+		const state = makeState({ runningLabel: "scripts/check", showTail: true });
+		expect(computeStatus(state)).toBe("🦡 Badger running scripts/check | 📺 Badger TAIL");
+	});
+
+	test("shows TAIL with DEBUG ON", () => {
+		const state = makeState({ showTail: true, debugEnabled: true });
+		expect(computeStatus(state)).toBe("📺 Badger TAIL | 🐛 Badger DEBUG ON");
 	});
 });
 
@@ -199,6 +216,7 @@ describe("BadgerState", () => {
 			isRunningRelease: false,
 			runningLabel: null,
 			debugEnabled: false,
+			showTail: false,
 		};
 
 		expect(state.enabled).toBe(true);
@@ -216,6 +234,7 @@ describe("BadgerState", () => {
 			isRunningRelease: false,
 			runningLabel: null,
 			debugEnabled: false,
+			showTail: false,
 		};
 
 		state.enabled = false;

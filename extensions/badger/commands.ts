@@ -1,16 +1,17 @@
 /**
- * Badger — Command registration (/badger:setup, /badger:check, /badger:release, /badger:debug, /badger:enable, /badger:disable)
+ * Badger — Command registration (/badger:setup, /badger:check, /badger:release, /badger:debug, /badger:enable, /badger:disable, /badger:tail)
  */
 
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { BadgerConfig, BadgerState, CheckEntry } from "./types.js";
-import { loadConfig, DEFAULT_FAST_FAILURE_PROMPT, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT } from "./config.js";
+import type { BadgerState, CheckEntry } from "./types.js";
+import { loadConfig, saveConfig, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT } from "./config.js";
 import { DebugLogger } from "./debug-logger.js";
 import { buildHashMap, rebuildHashMap, diffHashMaps, diffFilePaths } from "./file-watcher.js";
 import { runEntry, entryLabel } from "./runner.js";
+import { runCheckEntryWithOptionalTail } from "./check-runner.js";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -19,70 +20,6 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 // ---------------------------------------------------------------------------
 
 /** Run a sequence of check entries, collecting failures. */
-async function runCheckEntries(
-	entries: CheckEntry[],
-	cwd: string,
-	pi: ExtensionAPI,
-	debugLog: DebugLogger,
-	category: string,
-	state: BadgerState,
-	syncStatus: (state: BadgerState, ui: { setStatus: (key: string, value: string | undefined) => void }) => void,
-	ui: { setStatus: (key: string, value: string | undefined) => void; notify: (message: string, type: "info" | "warning" | "error") => void },
-): Promise<string[]> {
-	const failures: string[] = [];
-
-	for (const entry of entries) {
-		const label = entryLabel(entry);
-
-		// Prompt entries are fire-and-forget — no pass/fail gate
-		if (entry.type === "prompt" && entry.content) {
-			debugLog.log(category, "Sending prompt entry", {
-				contentLength: entry.content.length,
-				contentPreview: entry.content.slice(0, 200),
-			});
-			pi.sendMessage(
-				{
-					customType: `badger-${category}-prompt`,
-					content: entry.content,
-					display: true,
-				},
-				{ deliverAs: "followUp", triggerTurn: true },
-			);
-			continue;
-		}
-
-		state.runningLabel = label;
-		syncStatus(state, ui);
-		ui.notify(`🦡 Running ${label}...`, "info");
-
-		const result = await runEntry(entry, cwd, pi);
-
-		state.runningLabel = null;
-		syncStatus(state, ui);
-
-		debugLog.log(category, "Check completed", {
-			type: entry.type,
-			label,
-			exitCode: result.exitCode,
-			elapsedMs: result.elapsed,
-			stdoutLength: result.stdout.length,
-			stderrLength: result.stderr.length,
-			stdout: result.stdout.length <= 500 ? result.stdout : result.stdout.slice(0, 500) + "...[truncated]",
-			stderr: result.stderr.length <= 500 ? result.stderr : result.stderr.slice(0, 500) + "...[truncated]",
-		});
-
-		if (result.exitCode !== 0) {
-			const output = result.stderr || result.stdout;
-			const failurePrompt = entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
-			failures.push(
-				`**${label}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
-			);
-		}
-	}
-
-	return failures;
-}
-
 /** Run a single release entry, returning result. */
 async function runReleaseEntry(
 	release: CheckEntry,
@@ -238,16 +175,29 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 			state.isRunningChecks = true;
 			try {
-				const failures = await runCheckEntries(
-					state.config.checks,
-					ctx.cwd,
-					pi,
-					log,
-					"manual_check",
-					state,
-					syncStatus,
-					ctx.ui,
-				);
+				const failures: string[] = [];
+
+				for (const entry of state.config.checks) {
+					const result = await runCheckEntryWithOptionalTail(
+						entry, ctx.cwd, pi, state, log, syncStatus, ctx, "manual_check",
+					);
+
+					// If user dismissed overlay, skip this entry
+					if (result.aborted && result.exitCode === -1) {
+						log.log("manual_check", "Entry skipped (overlay dismissed)", {
+							label: entryLabel(entry),
+						});
+						continue;
+					}
+
+					if (result.exitCode !== 0) {
+						const output = result.stderr || result.stdout;
+						const failurePrompt = entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
+						failures.push(
+							`**${entryLabel(entry)}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+						);
+					}
+				}
 
 				if (failures.length > 0) {
 					const message = `Badger checks failed:\n\n${failures.join("\n\n")}`;
@@ -352,6 +302,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				log.setEnabled(false, ctx.cwd);
 				state.config.debug = false;
 				state.debugEnabled = false;
+				saveConfig(ctx.cwd, state.config);
 				syncStatus(state, ctx.ui);
 				ctx.ui.notify("🐛 Badger debug mode OFF", "info");
 				return;
@@ -389,6 +340,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					`  Has release: ${!!state.config.release}`,
 					`  Running checks: ${state.isRunningChecks}`,
 					`  Running release: ${state.isRunningRelease}`,
+					`  Tail overlay: ${state.showTail ? "ON" : "OFF"}`,
 				];
 
 				// Compute pending changes since last pass
@@ -416,6 +368,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				log.setEnabled(true, ctx.cwd);
 				state.config.debug = true;
 				state.debugEnabled = true;
+				saveConfig(ctx.cwd, state.config);
 				syncStatus(state, ctx.ui);
 				log.log("debug", "Debug mode enabled via /badger:debug command");
 				ctx.ui.notify("🐛 Badger debug mode ON — logging to .pi/badger-debug.log", "info");
@@ -423,8 +376,58 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				log.setEnabled(false, ctx.cwd);
 				state.config.debug = false;
 				state.debugEnabled = false;
+				saveConfig(ctx.cwd, state.config);
 				syncStatus(state, ctx.ui);
 				ctx.ui.notify("🐛 Badger debug mode OFF", "info");
+			}
+		},
+	});
+
+	// -----------------------------------------------------------------------
+	// /badger:tail — toggle tail overlay for full checks
+	// -----------------------------------------------------------------------
+	pi.registerCommand("badger:tail", {
+		description: "Toggle tail overlay for full checks. Use 'on'/'off' to toggle, or run without args to toggle.",
+		handler: async (args, ctx) => {
+			const subcommand = (args || "").trim().toLowerCase();
+
+			if (!state.config) {
+				ctx.ui.notify(
+					"Badger is not configured. Run /badger:setup first.",
+					"warning",
+				);
+				return;
+			}
+
+			if (subcommand === "on") {
+				state.showTail = true;
+				// Set a default tailLines value if not already set
+				if (state.config.tailLines === 0) {
+					state.config.tailLines = 20;
+				}
+				saveConfig(ctx.cwd, state.config);
+				syncStatus(state, ctx.ui);
+				ctx.ui.notify("🦡 Badger tail overlay ON — full checks will show live output", "info");
+			} else if (subcommand === "off") {
+				state.showTail = false;
+				saveConfig(ctx.cwd, state.config);
+				syncStatus(state, ctx.ui);
+				ctx.ui.notify("🦡 Badger tail overlay OFF", "info");
+			} else {
+				// Toggle
+				state.showTail = !state.showTail;
+				// Set a default tailLines value if not already set and enabling
+				if (state.showTail && state.config.tailLines === 0) {
+					state.config.tailLines = 20;
+				}
+				saveConfig(ctx.cwd, state.config);
+				syncStatus(state, ctx.ui);
+				ctx.ui.notify(
+					state.showTail
+						? "🦡 Badger tail overlay ON — full checks will show live output"
+						: "🦡 Badger tail overlay OFF",
+					"info",
+				);
 			}
 		},
 	});

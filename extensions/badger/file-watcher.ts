@@ -133,12 +133,16 @@ export function rebuildHashMap(
 	includePatterns: string[],
 	excludePatterns: string[],
 	oldMap: Map<string, FileHash>,
+	options?: { debugLog?: (category: string, message: string, details?: Record<string, unknown>) => void },
 ): Map<string, FileHash> {
 	const currentFiles = new Set(
 		discoverWatchedFiles(cwd, includePatterns, excludePatterns),
 	);
 
 	const newMap = new Map<string, FileHash>();
+	const reused: string[] = [];
+	const rehashed: Array<{ file: string; reason: string; oldHash?: string; newHash: string; mtimeChanged: boolean; hashChanged: boolean }> = [];
+	const added: string[] = [];
 
 	for (const filePath of currentFiles) {
 		const oldEntry = oldMap.get(filePath);
@@ -147,13 +151,44 @@ export function rebuildHashMap(
 		if (oldEntry && oldEntry.mtime === currentMtime) {
 			// File unchanged since last check — reuse hash
 			newMap.set(filePath, oldEntry);
+			reused.push(filePath);
 		} else {
 			// New file or modified — compute fresh hash
+			const newHash = hashFile(cwd, filePath);
 			newMap.set(filePath, {
-				hash: hashFile(cwd, filePath),
+				hash: newHash,
 				mtime: currentMtime,
 			});
+
+			if (!oldEntry) {
+				added.push(filePath);
+			} else {
+				const hashChanged = oldEntry.hash !== newHash;
+				rehashed.push({
+					file: filePath,
+					reason: hashChanged ? "content changed" : "mtime changed but content same",
+					oldHash: oldEntry.hash,
+					newHash,
+					mtimeChanged: true,
+					hashChanged,
+				});
+			}
 		}
+	}
+
+	const deleted = [...oldMap.keys()].filter(f => !currentFiles.has(f));
+
+	if (options?.debugLog) {
+		options.debugLog("rebuildHashMap", "Rebuild summary", {
+			totalFiles: currentFiles.size,
+			reusedCount: reused.length,
+			rehashedCount: rehashed.length,
+			addedCount: added.length,
+			deletedCount: deleted.length,
+			rehashedDetails: rehashed.length > 0 ? rehashed : undefined,
+			addedFiles: added.length > 0 ? added : undefined,
+			deletedFiles: deleted.length > 0 ? deleted : undefined,
+		});
 	}
 
 	return newMap;
@@ -194,4 +229,20 @@ export function diffHashMaps(
 /** Get just file paths from diff results */
 export function diffFilePaths(changes: Change[]): string[] {
 	return changes.map(c => c.filePath);
+}
+
+// ---------------------------------------------------------------------------
+// Debug helpers
+// ---------------------------------------------------------------------------
+
+/** Summarize a hash map for debug logging — shows size and per-file hash/mtime */
+export function summarizeHashMap(
+	label: string,
+	map: Map<string, FileHash>,
+): { label: string; fileCount: number; entries: Record<string, { hash: string; mtime: number }> } {
+	const entries: Record<string, { hash: string; mtime: number }> = {};
+	for (const [filePath, info] of map) {
+		entries[filePath] = { hash: info.hash, mtime: info.mtime };
+	}
+	return { label, fileCount: map.size, entries };
 }

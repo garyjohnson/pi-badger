@@ -15,7 +15,7 @@ import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { BadgerState } from "./types.js";
 import { loadConfig, SYSTEM_PROMPT, DEFAULT_FAST_FAILURE_PROMPT, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT, DEFAULT_CONFIG } from "./config.js";
 import { DebugLogger } from "./debug-logger.js";
-import { rebuildHashMap, diffHashMaps, diffFilePaths } from "./file-watcher.js";
+import { rebuildHashMap, diffHashMaps, diffFilePaths, summarizeHashMap } from "./file-watcher.js";
 import { runEntry, entryLabel } from "./runner.js";
 import { registerCommands } from "./commands.js";
 import { registerRenderers } from "./renderers.js";
@@ -94,6 +94,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			state.config.watchPatterns,
 			state.config.excludePatterns,
 			new Map(), // empty old map → full scan
+			{ debugLog: debugLog.log.bind(debugLog) },
 		);
 		// lastRunHashMap starts as current state — no changes to check yet
 		state.lastRunHashMap = new Map(state.currentHashMap);
@@ -144,14 +145,16 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		debugLog.log("turn_end", "Checking for changed files");
 
 		// Rebuild hash map efficiently (only re-hash changed files)
+		const previousHashMap = state.currentHashMap;
 		const newHashMap = rebuildHashMap(
 			ctx.cwd,
 			state.config.watchPatterns,
 			state.config.excludePatterns,
-			state.currentHashMap,
+			previousHashMap,
+			{ debugLog: debugLog.log.bind(debugLog) },
 		);
 
-		const changes = diffHashMaps(state.currentHashMap, newHashMap);
+		const changes = diffHashMaps(previousHashMap, newHashMap);
 		const changedFiles = diffFilePaths(changes);
 		state.currentHashMap = newHashMap;
 
@@ -163,12 +166,21 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				...(c.oldHash ? { oldHash: c.oldHash } : {}),
 				...(c.newHash ? { newHash: c.newHash } : {}),
 			})),
+			previousHashMap: summarizeHashMap("currentHashMap (before rebuild)", previousHashMap),
+			newHashMap: summarizeHashMap("newHashMap (after rebuild)", newHashMap),
 		});
 
 		if (changedFiles.length === 0) {
-			debugLog.log("turn_end", "No files changed, skipping fast checks");
+			debugLog.log("turn_end", "SKIP fast checks — no files changed", {
+				watchedFileCount: newHashMap.size,
+			});
 			return;
 		}
+
+		debugLog.log("turn_end", "INVOKE fast checks — files changed", {
+			changedFiles,
+			watchedFileCount: newHashMap.size,
+		});
 
 		// Abort any in-flight fast checks — stale results are no longer relevant
 		if (state.fastCheckAbortController) {
@@ -310,6 +322,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			state.config.watchPatterns,
 			state.config.excludePatterns,
 			state.currentHashMap,
+			{ debugLog: debugLog.log.bind(debugLog) },
 		);
 		state.currentHashMap = newHashMap;
 
@@ -321,13 +334,25 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			changes: changes.map(c => ({
 				file: c.filePath,
 				type: c.changeType,
+				...(c.oldHash ? { oldHash: c.oldHash } : {}),
+				...(c.newHash ? { newHash: c.newHash } : {}),
 			})),
+			lastRunHashMap: summarizeHashMap("lastRunHashMap", state.lastRunHashMap),
+			currentHashMap: summarizeHashMap("currentHashMap (after rebuild)", newHashMap),
 		});
 
 		if (changed.length === 0) {
-			debugLog.log("agent_end", "No changes since last checks run — skipping checks");
+			debugLog.log("agent_end", "SKIP full checks — no files changed since last successful run", {
+				watchedFileCount: newHashMap.size,
+				lastRunHashFileCount: state.lastRunHashMap.size,
+			});
 			return;
 		}
+
+		debugLog.log("agent_end", "INVOKE full checks — files changed since last run", {
+			changedFiles: changed,
+			watchedFileCount: newHashMap.size,
+		});
 
 		// Mark as checked now so next agent_end won't re-run unless the agent makes new changes
 		state.lastRunHashMap = new Map(newHashMap);

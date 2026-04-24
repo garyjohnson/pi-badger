@@ -9,6 +9,7 @@ import {
 	rebuildHashMap,
 	diffHashMaps,
 	diffFilePaths,
+	summarizeHashMap,
 } from "../extensions/badger/file-watcher.js";
 import { createTempDir, createFile } from "./helpers.js";
 
@@ -303,5 +304,80 @@ describe("rebuildHashMap", () => {
 		const newMap = rebuildHashMap(tmp.dir, ["src/**/*"], [], oldMap);
 		expect(newMap.has("src/to-delete.ts")).toBe(false);
 		expect(newMap.size).toBe(oldMap.size - 1);
+	});
+
+	test("calls debugLog when provided", () => {
+		createFile(tmp.dir, "src/index.ts", "initial");
+		const oldMap = buildHashMap(tmp.dir, ["src/**/*"], []);
+
+		const logEntries: Array<{ category: string; message: string; details?: Record<string, unknown> }> = [];
+		const mockDebugLog = (category: string, message: string, details?: Record<string, unknown>) => {
+			logEntries.push({ category, message, details });
+		};
+
+		rebuildHashMap(tmp.dir, ["src/**/*"], [], oldMap, { debugLog: mockDebugLog });
+
+		expect(logEntries.length).toBe(1);
+		expect(logEntries[0].category).toBe("rebuildHashMap");
+		expect(logEntries[0].message).toBe("Rebuild summary");
+		expect(logEntries[0].details).toBeDefined();
+		expect(logEntries[0].details!.reusedCount).toBe(1);
+		expect(logEntries[0].details!.rehashedCount).toBe(0);
+	});
+
+	test("debugLog shows rehashed details when mtime changes", () => {
+		createFile(tmp.dir, "src/index.ts", "initial");
+		const currentMap = buildHashMap(tmp.dir, ["src/**/*"], []);
+		const currentEntry = currentMap.get("src/index.ts")!;
+
+		// Simulate stale mtime
+		const staleMap = new Map([
+			["src/index.ts", { hash: "stalehash", mtime: currentEntry.mtime - 1000 }],
+		]);
+
+		const logEntries: Array<{ category: string; message: string; details?: Record<string, unknown> }> = [];
+		const mockDebugLog = (category: string, message: string, details?: Record<string, unknown>) => {
+			logEntries.push({ category, message, details });
+		};
+
+		rebuildHashMap(tmp.dir, ["src/**/*"], [], staleMap, { debugLog: mockDebugLog });
+
+		expect(logEntries.length).toBe(1);
+		const details = logEntries[0].details!;
+		expect(details.reusedCount).toBe(0);
+		expect(details.rehashedCount).toBe(1);
+		expect((details.rehashedDetails as Array<unknown>).length).toBe(1);
+	});
+
+	test("works without debugLog option (default)", () => {
+		createFile(tmp.dir, "src/index.ts", "content");
+		const oldMap = buildHashMap(tmp.dir, ["src/**/*"], []);
+
+		// Should not throw
+		const newMap = rebuildHashMap(tmp.dir, ["src/**/*"], [], oldMap);
+		expect(newMap.size).toBe(1);
+	});
+});
+
+describe("summarizeHashMap", () => {
+	test("summarizes a hash map with entries", () => {
+		const map = new Map([
+			["src/a.ts", { hash: "abc123", mtime: 1000 }],
+			["src/b.ts", { hash: "def456", mtime: 2000 }],
+		]);
+
+		const summary = summarizeHashMap("test", map);
+		expect(summary.label).toBe("test");
+		expect(summary.fileCount).toBe(2);
+		expect(summary.entries["src/a.ts"]).toEqual({ hash: "abc123", mtime: 1000 });
+		expect(summary.entries["src/b.ts"]).toEqual({ hash: "def456", mtime: 2000 });
+	});
+
+	test("summarizes an empty hash map", () => {
+		const map = new Map();
+		const summary = summarizeHashMap("empty", map);
+		expect(summary.label).toBe("empty");
+		expect(summary.fileCount).toBe(0);
+		expect(Object.keys(summary.entries)).toHaveLength(0);
 	});
 });

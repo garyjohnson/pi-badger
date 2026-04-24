@@ -5,6 +5,77 @@ import {
 	extractReleaseLabel,
 	countCheckFailures,
 } from "../extensions/badger/renderers.js";
+import { computeStatus } from "../extensions/badger/status.js";
+import type { BadgerState } from "../extensions/badger/types.js";
+
+// ---------------------------------------------------------------------------
+// computeStatus
+// ---------------------------------------------------------------------------
+
+describe("computeStatus", () => {
+	function makeState(overrides: Partial<BadgerState> = {}): BadgerState {
+		return {
+			config: {
+				watchPatterns: ["src/**/*"],
+				excludePatterns: [],
+				notifyWithoutConfig: true,
+				debug: false,
+				checksFast: [],
+				checks: [],
+				release: null,
+			},
+			enabled: true,
+			currentHashMap: new Map(),
+			lastRunHashMap: new Map(),
+			fastCheckAbortController: null,
+			isRunningChecks: false,
+			isRunningRelease: false,
+			runningLabel: null,
+			debugEnabled: false,
+			...overrides,
+		};
+	}
+
+	test("shows 'Badger ON' when enabled and idle", () => {
+		const state = makeState();
+		expect(computeStatus(state)).toBe("🦡 Badger ON");
+	});
+
+	test("shows 'Badger DISABLED' when disabled", () => {
+		const state = makeState({ enabled: false });
+		expect(computeStatus(state)).toBe("🦡 Badger DISABLED");
+	});
+
+	test("shows running label when a check is active", () => {
+		const state = makeState({ runningLabel: "scripts/lint" });
+		expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint");
+	});
+
+	test("shows running label with Debug ON", () => {
+		const state = makeState({ runningLabel: "scripts/check", debugEnabled: true });
+		expect(computeStatus(state)).toBe("🦡 Badger running scripts/check | 🐛 Debug ON");
+	});
+
+	test("shows Debug ON when enabled and idle", () => {
+		const state = makeState({ debugEnabled: true });
+		expect(computeStatus(state)).toBe("🦡 Badger ON | 🐛 Debug ON");
+	});
+
+	test("shows Debug ON when disabled", () => {
+		const state = makeState({ enabled: false, debugEnabled: true });
+		expect(computeStatus(state)).toBe("🦡 Badger DISABLED | 🐛 Debug ON");
+	});
+
+	test("returns undefined when no config loaded", () => {
+		const state = makeState({ config: null });
+		expect(computeStatus(state)).toBeUndefined();
+	});
+
+	test("shows DISABLED with debug when no config and disabled", () => {
+		const state = makeState({ config: null, enabled: false, debugEnabled: true });
+		expect(computeStatus(state)).toBeUndefined();
+	});
+});
 
 // ---------------------------------------------------------------------------
 // extractFastLabel
@@ -113,7 +184,7 @@ describe("countCheckFailures", () => {
 });
 
 // ---------------------------------------------------------------------------
-// BadgerState.enabled field
+// BadgerState fields
 // ---------------------------------------------------------------------------
 
 describe("BadgerState", () => {
@@ -126,6 +197,8 @@ describe("BadgerState", () => {
 			fastCheckAbortController: null,
 			isRunningChecks: false,
 			isRunningRelease: false,
+			runningLabel: null,
+			debugEnabled: false,
 		};
 
 		expect(state.enabled).toBe(true);
@@ -141,6 +214,8 @@ describe("BadgerState", () => {
 			fastCheckAbortController: null,
 			isRunningChecks: false,
 			isRunningRelease: false,
+			runningLabel: null,
+			debugEnabled: false,
 		};
 
 		state.enabled = false;

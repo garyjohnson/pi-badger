@@ -25,7 +25,9 @@ async function runCheckEntries(
 	pi: ExtensionAPI,
 	debugLog: DebugLogger,
 	category: string,
-	ui?: { setStatus: (key: string, value: string | undefined) => void },
+	state: BadgerState,
+	syncStatus: (state: BadgerState, ui: { setStatus: (key: string, value: string | undefined) => void }) => void,
+	ui: { setStatus: (key: string, value: string | undefined) => void; notify: (message: string, type: "info" | "warning" | "error") => void },
 ): Promise<string[]> {
 	const failures: string[] = [];
 
@@ -49,11 +51,14 @@ async function runCheckEntries(
 			continue;
 		}
 
-		ui?.setStatus("badger-running", `🦡 ${label}`);
+		state.runningLabel = label;
+		syncStatus(state, ui);
+		ui.notify(`🦡 Running ${label}...`, "info");
 
 		const result = await runEntry(entry, cwd, pi);
 
-		ui?.setStatus("badger-running", undefined);
+		state.runningLabel = null;
+		syncStatus(state, ui);
 
 		debugLog.log(category, "Check completed", {
 			type: entry.type,
@@ -84,12 +89,17 @@ async function runReleaseEntry(
 	cwd: string,
 	pi: ExtensionAPI,
 	debugLog: DebugLogger,
-	ui?: { setStatus: (key: string, value: string | undefined) => void },
+	state: BadgerState,
+	syncStatus: (state: BadgerState, ui: { setStatus: (key: string, value: string | undefined) => void }) => void,
+	ui: { setStatus: (key: string, value: string | undefined) => void; notify: (message: string, type: "info" | "warning" | "error") => void },
 ): Promise<{ success: boolean; output: string }> {
 	const label = entryLabel(release);
-	ui?.setStatus("badger-running", `🦡 ${label}`);
+	state.runningLabel = label;
+	syncStatus(state, ui);
+	ui.notify(`🦡 Running ${label}...`, "info");
 	const result = await runEntry(release, cwd, pi);
-	ui?.setStatus("badger-running", undefined);
+	state.runningLabel = null;
+	syncStatus(state, ui);
 
 	debugLog.log("release", "Release completed", {
 		type: release.type,
@@ -113,6 +123,7 @@ export function registerCommands(
 	pi: ExtensionAPI,
 	state: BadgerState,
 	debugLog: () => DebugLogger,
+	syncStatus: (state: BadgerState, ui: { setStatus: (key: string, value: string | undefined) => void }) => void,
 ): void {
 
 	// -----------------------------------------------------------------------
@@ -170,13 +181,13 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			state.lastRunHashMap = new Map(state.currentHashMap);
 
 			const fileCount = state.currentHashMap.size;
-			ctx.ui.setStatus("badger-enabled", "🦡 Badger ON");
 			ctx.ui.notify(`🦡 Badger enabled — watching ${fileCount} file(s)`, "info");
 
 			const log = debugLog();
 			log.log("enable", "Badger enabled via /badger:enable command", {
 				fileCount,
 			});
+			syncStatus(state, ctx.ui);
 		},
 	});
 
@@ -200,7 +211,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			}
 
 			state.enabled = false;
-			ctx.ui.setStatus("badger-enabled", undefined);
+			syncStatus(state, ctx.ui);
 			ctx.ui.notify("🦡 Badger disabled — automatic checks paused", "info");
 
 			const log = debugLog();
@@ -222,7 +233,6 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				return;
 			}
 
-			ctx.ui.notify("Running Badger checks...", "info");
 			const log = debugLog();
 			log.log("manual_check", "Manually triggered full checks");
 
@@ -234,6 +244,8 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					pi,
 					log,
 					"manual_check",
+					state,
+					syncStatus,
 					ctx.ui,
 				);
 
@@ -283,7 +295,6 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				return;
 			}
 
-			ctx.ui.notify("Running Badger release...", "info");
 			const log = debugLog();
 			log.log("manual_release", "Manually triggered release");
 
@@ -294,6 +305,8 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					ctx.cwd,
 					pi,
 					log,
+					state,
+					syncStatus,
 					ctx.ui,
 				);
 
@@ -338,7 +351,8 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			if (subcommand === "off") {
 				log.setEnabled(false, ctx.cwd);
 				state.config.debug = false;
-				ctx.ui.setStatus("badger-debug", undefined);
+				state.debugEnabled = false;
+				syncStatus(state, ctx.ui);
 				ctx.ui.notify("🐛 Badger debug mode OFF", "info");
 				return;
 			}
@@ -401,13 +415,15 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			if (!log.isEnabled) {
 				log.setEnabled(true, ctx.cwd);
 				state.config.debug = true;
-				ctx.ui.setStatus("badger-debug", "🐛 Debug ON");
+				state.debugEnabled = true;
+				syncStatus(state, ctx.ui);
 				log.log("debug", "Debug mode enabled via /badger:debug command");
 				ctx.ui.notify("🐛 Badger debug mode ON — logging to .pi/badger-debug.log", "info");
 			} else {
 				log.setEnabled(false, ctx.cwd);
 				state.config.debug = false;
-				ctx.ui.setStatus("badger-debug", undefined);
+				state.debugEnabled = false;
+				syncStatus(state, ctx.ui);
 				ctx.ui.notify("🐛 Badger debug mode OFF", "info");
 			}
 		},

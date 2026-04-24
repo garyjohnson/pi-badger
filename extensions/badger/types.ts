@@ -65,4 +65,6 @@ export interface BadgerState {
 	fastCheckAbortController: AbortController | null;
 	isRunningChecks: boolean;
 	isRunningRelease: boolean;
+	runningLabel: string | null;
+	debugEnabled: boolean;
 }

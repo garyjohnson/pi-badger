@@ -19,10 +19,16 @@ import { rebuildHashMap, diffHashMaps, diffFilePaths } from "./file-watcher.js";
 import { runEntry, entryLabel } from "./runner.js";
 import { registerCommands } from "./commands.js";
 import { registerRenderers } from "./renderers.js";
+import { computeStatus } from "./status.js";
 
 // ---------------------------------------------------------------------------
 // Extension
 // ---------------------------------------------------------------------------
+
+/** Sync the consolidated status bar from current state. */
+function syncStatus(state: BadgerState, ui: { setStatus: (key: string, value: string | undefined) => void }) {
+	ui.setStatus("badger", computeStatus(state));
+}
 
 export default function badgerExtension(pi: ExtensionAPI) {
 	const state: BadgerState = {
@@ -33,12 +39,14 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		fastCheckAbortController: null,
 		isRunningChecks: false,
 		isRunningRelease: false,
+		runningLabel: null,
+		debugEnabled: false,
 	};
 
 	let debugLog: DebugLogger = new DebugLogger("", false);
 
 	// Register commands and renderers
-	registerCommands(pi, state, () => debugLog);
+	registerCommands(pi, state, () => debugLog, syncStatus);
 	registerRenderers(pi);
 
 	// -----------------------------------------------------------------------
@@ -65,6 +73,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 		// Env var overrides config
 		const debugEnabled = envDebug || state.config.debug;
+		state.debugEnabled = debugEnabled;
 		debugLog = new DebugLogger(ctx.cwd, debugEnabled);
 
 		debugLog.log("session_start", "Session starting", {
@@ -95,12 +104,8 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			files: fileCount <= 50 ? Array.from(state.currentHashMap.keys()) : `${fileCount} files (too many to list)`,
 		});
 
-		ctx.ui.setStatus("badger-enabled", "🦡 Badger ON");
+		syncStatus(state, ctx.ui);
 		ctx.ui.notify(`Badger active — watching ${fileCount} file(s)${debugEnabled ? " (debug)" : ""}`, "info");
-
-		if (debugEnabled) {
-			ctx.ui.setStatus("badger-debug", "🐛 Debug ON");
-		}
 	});
 
 	// -----------------------------------------------------------------------
@@ -214,11 +219,14 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				// Skip this entry if no matching files changed
 				if (entryFiles.length === 0) continue;
 
-				ctx.ui.setStatus("badger-running", `🦡 ${label}`);
+				state.runningLabel = label;
+				syncStatus(state, ctx.ui);
+				ctx.ui.notify(`🦡 Running ${label}...`, "info");
 
 				const result = await runEntry(entry, cwd, pi, { signal, changedFiles: entryFiles });
 
-				ctx.ui.setStatus("badger-running", undefined);
+				state.runningLabel = null;
+				syncStatus(state, ctx.ui);
 
 				if (result.aborted) {
 					debugLog.log("fast_check", "Cancelled during execution — new changes superseded this run", {
@@ -360,11 +368,14 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					continue;
 				}
 
-				ctx.ui.setStatus("badger-running", `🦡 ${label}`);
+				state.runningLabel = label;
+				syncStatus(state, ctx.ui);
+				ctx.ui.notify(`🦡 Running ${label}...`, "info");
 
 				const result = await runEntry(entry, ctx.cwd, pi);
 
-				ctx.ui.setStatus("badger-running", undefined);
+				state.runningLabel = null;
+				syncStatus(state, ctx.ui);
 
 				debugLog.log("agent_check", "Check completed", {
 					type: entry.type,
@@ -407,8 +418,11 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			// Run release if configured
 			if (state.config.release) {
 				state.isRunningRelease = true;
+				const releaseLabel = entryLabel(state.config.release);
 				debugLog.log("agent_release", "Starting release");
-				ctx.ui.setStatus("badger-running", `🦡 ${entryLabel(state.config.release)}`);
+				state.runningLabel = releaseLabel;
+				syncStatus(state, ctx.ui);
+				ctx.ui.notify(`🦡 Running ${releaseLabel}...`, "info");
 
 				try {
 					const result = await runEntry(state.config.release, ctx.cwd, pi);
@@ -435,7 +449,8 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					}
 				} finally {
 					state.isRunningRelease = false;
-					ctx.ui.setStatus("badger-running", undefined);
+					state.runningLabel = null;
+					syncStatus(state, ctx.ui);
 				}
 			}
 		} finally {

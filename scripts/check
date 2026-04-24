@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Badger full check — runs the complete test suite
+set -euo pipefail
+
+echo "Running full checks..."
+bun test
+echo "All checks passed"

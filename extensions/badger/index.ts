@@ -214,7 +214,11 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				// Skip this entry if no matching files changed
 				if (entryFiles.length === 0) continue;
 
+				ctx.ui.setStatus("badger-running", `🦡 ${label}`);
+
 				const result = await runEntry(entry, cwd, pi, { signal, changedFiles: entryFiles });
+
+				ctx.ui.setStatus("badger-running", undefined);
 
 				if (result.aborted) {
 					debugLog.log("fast_check", "Cancelled during execution — new changes superseded this run", {
@@ -356,7 +360,11 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					continue;
 				}
 
+				ctx.ui.setStatus("badger-running", `🦡 ${label}`);
+
 				const result = await runEntry(entry, ctx.cwd, pi);
+
+				ctx.ui.setStatus("badger-running", undefined);
 
 				debugLog.log("agent_check", "Check completed", {
 					type: entry.type,
@@ -400,6 +408,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			if (state.config.release) {
 				state.isRunningRelease = true;
 				debugLog.log("agent_release", "Starting release");
+				ctx.ui.setStatus("badger-running", `🦡 ${entryLabel(state.config.release)}`);
 
 				try {
 					const result = await runEntry(state.config.release, ctx.cwd, pi);
@@ -426,6 +435,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					}
 				} finally {
 					state.isRunningRelease = false;
+					ctx.ui.setStatus("badger-running", undefined);
 				}
 			}
 		} finally {

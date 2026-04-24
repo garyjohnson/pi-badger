@@ -25,6 +25,7 @@ async function runCheckEntries(
 	pi: ExtensionAPI,
 	debugLog: DebugLogger,
 	category: string,
+	ui?: { setStatus: (key: string, value: string | undefined) => void },
 ): Promise<string[]> {
 	const failures: string[] = [];
 
@@ -48,7 +49,11 @@ async function runCheckEntries(
 			continue;
 		}
 
+		ui?.setStatus("badger-running", `🦡 ${label}`);
+
 		const result = await runEntry(entry, cwd, pi);
+
+		ui?.setStatus("badger-running", undefined);
 
 		debugLog.log(category, "Check completed", {
 			type: entry.type,
@@ -79,9 +84,12 @@ async function runReleaseEntry(
 	cwd: string,
 	pi: ExtensionAPI,
 	debugLog: DebugLogger,
+	ui?: { setStatus: (key: string, value: string | undefined) => void },
 ): Promise<{ success: boolean; output: string }> {
 	const label = entryLabel(release);
+	ui?.setStatus("badger-running", `🦡 ${label}`);
 	const result = await runEntry(release, cwd, pi);
+	ui?.setStatus("badger-running", undefined);
 
 	debugLog.log("release", "Release completed", {
 		type: release.type,
@@ -226,6 +234,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					pi,
 					log,
 					"manual_check",
+					ctx.ui,
 				);
 
 				if (failures.length > 0) {
@@ -285,6 +294,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					ctx.cwd,
 					pi,
 					log,
+					ctx.ui,
 				);
 
 				if (!result.success) {

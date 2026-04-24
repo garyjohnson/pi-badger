@@ -27,6 +27,7 @@ import { registerRenderers } from "./renderers.js";
 export default function badgerExtension(pi: ExtensionAPI) {
 	const state: BadgerState = {
 		config: null,
+		enabled: true,
 		currentHashMap: new Map(),
 		lastRunHashMap: new Map(),
 		fastCheckAbortController: null,
@@ -55,7 +56,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 			if (DEFAULT_CONFIG.notifyWithoutConfig) {
 				ctx.ui.notify(
-					"Badger is installed but not configured. Run /badger-setup to get started.",
+					"Badger is installed but not configured. Run /badger:setup to get started.",
 					"info",
 				);
 			}
@@ -94,6 +95,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			files: fileCount <= 50 ? Array.from(state.currentHashMap.keys()) : `${fileCount} files (too many to list)`,
 		});
 
+		ctx.ui.setStatus("badger-enabled", "🦡 Badger ON");
 		ctx.ui.notify(`Badger active — watching ${fileCount} file(s)${debugEnabled ? " (debug)" : ""}`, "info");
 
 		if (debugEnabled) {
@@ -121,11 +123,16 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	// Turn end — run checksFast if files changed
 	// -----------------------------------------------------------------------
 	pi.on("turn_end", async (_event, ctx) => {
-		if (!state.config || state.config.checksFast.length === 0) {
+		if (!state.config || !state.enabled) {
 			debugLog.log("turn_end", "Skipping fast checks", {
 				hasConfig: !!state.config,
-				checksFastCount: state.config?.checksFast.length ?? 0,
+				enabled: state.enabled,
 			});
+			return;
+		}
+
+		if (state.config.checksFast.length === 0) {
+			debugLog.log("turn_end", "No fast checks configured");
 			return;
 		}
 
@@ -269,7 +276,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	// Agent end — run checks, then release on success
 	// -----------------------------------------------------------------------
 	pi.on("agent_end", async (_event, ctx) => {
-		if (!state.config) return;
+		if (!state.config || !state.enabled) return;
 		if (state.isRunningChecks || state.isRunningRelease) {
 			debugLog.log("agent_end", "Skipping — checks or release already in progress", {
 				isRunningChecks: state.isRunningChecks,

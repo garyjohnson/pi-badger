@@ -1,5 +1,5 @@
 /**
- * Badger — Command registration (/badger, /badger-setup, /badger-release, /badger-debug)
+ * Badger — Command registration (/badger:setup, /badger:check, /badger:release, /badger:debug, /badger:enable, /badger:disable)
  */
 
 import * as fs from "node:fs";
@@ -108,9 +108,9 @@ export function registerCommands(
 ): void {
 
 	// -----------------------------------------------------------------------
-	// /badger-setup — configure Badger for this project
+	// /badger:setup — configure Badger for this project
 	// -----------------------------------------------------------------------
-	pi.registerCommand("badger-setup", {
+	pi.registerCommand("badger:setup", {
 		description: "Configure Badger quality gate for this project",
 		handler: async (_args, ctx) => {
 			const skillPath = path.join(__dirname, "..", "skills", "badger-setup", "SKILL.md");
@@ -139,14 +139,76 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 	});
 
 	// -----------------------------------------------------------------------
-	// /badger — manually trigger full checks
+	// /badger:enable — enable Badger auto-checks
 	// -----------------------------------------------------------------------
-	pi.registerCommand("badger", {
+	pi.registerCommand("badger:enable", {
+		description: "Enable Badger automatic checks and release",
+		handler: async (_args, ctx) => {
+			if (!state.config) {
+				ctx.ui.notify(
+					"Badger is not configured. Run /badger:setup first.",
+					"warning",
+				);
+				return;
+			}
+
+			state.enabled = true;
+			// Rebuild hash maps to current state so we don't trigger stale checks
+			state.currentHashMap = buildHashMap(
+				ctx.cwd,
+				state.config.watchPatterns,
+				state.config.excludePatterns,
+			);
+			state.lastRunHashMap = new Map(state.currentHashMap);
+
+			const fileCount = state.currentHashMap.size;
+			ctx.ui.setStatus("badger-enabled", "🦡 Badger ON");
+			ctx.ui.notify(`🦡 Badger enabled — watching ${fileCount} file(s)`, "info");
+
+			const log = debugLog();
+			log.log("enable", "Badger enabled via /badger:enable command", {
+				fileCount,
+			});
+		},
+	});
+
+	// -----------------------------------------------------------------------
+	// /badger:disable — disable Badger auto-checks
+	// -----------------------------------------------------------------------
+	pi.registerCommand("badger:disable", {
+		description: "Disable Badger automatic checks and release",
+		handler: async (_args, ctx) => {
+			if (!state.config) {
+				ctx.ui.notify(
+					"Badger is not configured. Run /badger:setup first.",
+					"warning",
+				);
+				return;
+			}
+
+			// Abort any in-flight fast checks
+			if (state.fastCheckAbortController) {
+				state.fastCheckAbortController.abort();
+			}
+
+			state.enabled = false;
+			ctx.ui.setStatus("badger-enabled", undefined);
+			ctx.ui.notify("🦡 Badger disabled — automatic checks paused", "info");
+
+			const log = debugLog();
+			log.log("disable", "Badger disabled via /badger:disable command");
+		},
+	});
+
+	// -----------------------------------------------------------------------
+	// /badger:check — manually trigger full checks
+	// -----------------------------------------------------------------------
+	pi.registerCommand("badger:check", {
 		description: "Manually trigger Badger checks",
 		handler: async (_args, ctx) => {
 			if (!state.config) {
 				ctx.ui.notify(
-					"Badger is not configured. Run /badger-setup first.",
+					"Badger is not configured. Run /badger:setup first.",
 					"warning",
 				);
 				return;
@@ -194,14 +256,14 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 	});
 
 	// -----------------------------------------------------------------------
-	// /badger-release — manually trigger release
+	// /badger:release — manually trigger release
 	// -----------------------------------------------------------------------
-	pi.registerCommand("badger-release", {
+	pi.registerCommand("badger:release", {
 		description: "Manually trigger Badger release",
 		handler: async (_args, ctx) => {
 			if (!state.config) {
 				ctx.ui.notify(
-					"Badger is not configured. Run /badger-setup first.",
+					"Badger is not configured. Run /badger:setup first.",
 					"warning",
 				);
 				return;
@@ -246,16 +308,16 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 	});
 
 	// -----------------------------------------------------------------------
-	// /badger-debug — toggle debug mode, view log, clear log, show status
+	// /badger:debug — toggle debug mode, view log, clear log, show status
 	// -----------------------------------------------------------------------
-	pi.registerCommand("badger-debug", {
+	pi.registerCommand("badger:debug", {
 		description: "Toggle Badger debug mode. Use 'on'/'off' to toggle, 'log' to view, 'clear' to clear log",
 		handler: async (args, ctx) => {
 			const subcommand = (args || "").trim().toLowerCase();
 
 			if (!state.config) {
 				ctx.ui.notify(
-					"Badger is not configured. Run /badger-setup first.",
+					"Badger is not configured. Run /badger:setup first.",
 					"warning",
 				);
 				return;
@@ -292,6 +354,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				const lines = [
 					`🐛 Badger Debug Status`,
 					`  Enabled: ${log.isEnabled}`,
+					`  Badger active: ${state.enabled}`,
 					`  Log path: ${log.getLogPath()}`,
 					`  Watch patterns: ${state.config.watchPatterns.join(", ")}`,
 					`  Exclude patterns: ${state.config.excludePatterns.join(", ") || "(none)"}`,
@@ -329,7 +392,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				log.setEnabled(true, ctx.cwd);
 				state.config.debug = true;
 				ctx.ui.setStatus("badger-debug", "🐛 Debug ON");
-				log.log("debug", "Debug mode enabled via /badger-debug command");
+				log.log("debug", "Debug mode enabled via /badger:debug command");
 				ctx.ui.notify("🐛 Badger debug mode ON — logging to .pi/badger-debug.log", "info");
 			} else {
 				log.setEnabled(false, ctx.cwd);

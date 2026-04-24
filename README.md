@@ -38,7 +38,7 @@ Or add to `.pi/settings.json`:
 Run the setup command to analyze your project and create configuration:
 
 ```
-/badger-setup
+/badger:setup
 ```
 
 This will:
@@ -209,7 +209,7 @@ There are three ways to enable debug mode:
 
 1. **Config file** — Set `"debug": true` in `.pi/badger.json`
 2. **Environment variable** — Set `BADGER_DEBUG=1` or `BADGER_DEBUG=true`
-3. **Command** — Run `/badger-debug` to toggle debug mode on/off
+3. **Command** — Run `/badger:debug` to toggle debug mode on/off
 
 ```json
 {
@@ -248,18 +248,18 @@ Debug output is also written to stderr (shows in pi's process output) and the lo
 
 | Command | Description |
 |---------|-------------|
-| `/badger-debug` | Toggle debug mode on (default) or off |
-| `/badger-debug on` | Enable debug mode |
-| `/badger-debug off` | Disable debug mode |
-| `/badger-debug status` | Show current state: tracked files, pending changes, running status |
-| `/badger-debug log` | Show last 100 lines of the debug log |
-| `/badger-debug clear` | Clear the debug log file |
+| `/badger:debug` | Toggle debug mode on (default) or off |
+| `/badger:debug on` | Enable debug mode |
+| `/badger:debug off` | Disable debug mode |
+| `/badger:debug status` | Show current state: tracked files, pending changes, running status |
+| `/badger:debug log` | Show last 100 lines of the debug log |
+| `/badger:debug clear` | Clear the debug log file |
 
 When debug mode is active, a `🐛 Debug ON` status indicator appears in the TUI footer.
 
 ### Status Command
 
-`/badger-debug status` gives you a snapshot of Badger's current state:
+`/badger:debug status` gives you a snapshot of Badger's current state:
 
 ```
 🐛 Badger Debug Status
@@ -283,10 +283,12 @@ When debug mode is active, a `🐛 Debug ON` status indicator appears in the TUI
 
 | Command | Description |
 |---------|-------------|
-| `/badger` | Manually trigger full checks |
-| `/badger-release` | Manually trigger the release step |
-| `/badger-setup` | Configure Badger for this project |
-| `/badger-debug` | Toggle debug mode, view log, show status |
+| `/badger:setup` | Configure Badger for this project |
+| `/badger:enable` | Enable Badger automatic checks and release |
+| `/badger:disable` | Disable Badger automatic checks and release |
+| `/badger:check` | Manually trigger full checks |
+| `/badger:release` | Manually trigger the release step |
+| `/badger:debug` | Toggle debug mode, view log, show status |
 
 ## Scripts
 

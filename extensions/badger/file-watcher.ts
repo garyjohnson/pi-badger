@@ -28,28 +28,29 @@ export function matchesPatterns(
 	return isMatch(normalized) && !isExcluded(normalized);
 }
 
+/** Check if a directory path should be pruned (not descended into) based on exclude patterns */
+export function shouldPruneDirectory(
+	dirName: string,
+	dirPath: string,
+	excludePatterns: string[],
+): boolean {
+	if (excludePatterns.length === 0) return false;
+
+	const isExcluded = picomatch(excludePatterns, { dot: true });
+	const normalized = dirPath.replace(/\\/g, "/");
+
+	// Test both the directory name alone (covers "node_modules" matching anywhere)
+	// and the full relative path (covers "**/dist/subdir" and similar)
+	if (isExcluded(dirName)) return true;
+	if (isExcluded(normalized)) return true;
+	if (isExcluded(normalized + "/")) return true;
+
+	return false;
+}
+
 // ---------------------------------------------------------------------------
 // File discovery
 // ---------------------------------------------------------------------------
-
-/** Directories to skip when walking the file tree */
-const SKIP_DIRS = new Set([
-	"node_modules",
-	".git",
-	"dist",
-	"build",
-	".pi",
-	".next",
-	".nuxt",
-	"coverage",
-	".cache",
-	".turbo",
-	"__pycache__",
-	".tox",
-	"target",
-	"venv",
-	".venv",
-]);
 
 /** Recursively discover files matching watch patterns */
 export function discoverWatchedFiles(
@@ -69,7 +70,8 @@ export function discoverWatchedFiles(
 
 		for (const entry of entries) {
 			if (entry.isDirectory()) {
-				if (SKIP_DIRS.has(entry.name)) continue;
+				const dirPath = path.relative(cwd, path.join(dir, entry.name)).replace(/\\/g, "/");
+				if (shouldPruneDirectory(entry.name, dirPath, excludePatterns)) continue;
 				walkDir(path.join(dir, entry.name));
 			} else if (entry.isFile()) {
 				const filePath = path.relative(cwd, path.join(dir, entry.name)).replace(/\\/g, "/");

@@ -14,16 +14,27 @@ Configure Badger for this project. This skill will:
 
 ## Steps
 
-### Step 1: Analyze the project
 
-Look at the project root for:
 
-- **Language**: Check for `package.json` (JS/TS), `requirements.txt` / `pyproject.toml` (Python), `Cargo.toml` (Rust), `go.mod` (Go), `Gemfile` / `*.gemspec` (Ruby), `pom.xml` / `build.gradle` (Java), etc.
-- **Test framework**: `jest`, `vitest`, `pytest`, `cargo test`, `go test`, `rspec`, etc.
-- **Linter/formatter**: `eslint`, `prettier`, `ruff`, `mypy`, `clippy`, etc.
-- **Build tool**: `tsc`, `webpack`, `vite`, `setuptools`, `cargo`, etc.
-- **Existing scripts**: Check if a `scripts/` directory already exists
-- **Test file conventions**: How are test files named? Colocated (`.test.ts`, `.spec.ts`) or separate dirs (`tests/test_*.py`, `__tests__/`)? E2e tests?
+### Step 1.1: Read .gitignore for exclude patterns
+
+If a `.gitignore` file exists, read it and extract directory patterns to inform `excludePatterns`:
+
+- **Directory patterns** (lines ending with `/`): Convert `node_modules/` → `**/node_modules`, `dist/` → `**/dist`. These are the strongest signal — if you gitignore it, you don't want Badger watching it.
+- **Simple file patterns** (e.g., `*.log`, `*.snap`, `*.tmp`): Include these too — they're low-risk and catch artifacts you'd want to ignore.
+- **Skip**: negation patterns (`!`), comments (`#`), patterns with leading `/`, and complex patterns with `**` or `?` — these are too context-specific to translate reliably.
+
+Once extracted, merge `.gitignore` patterns with ecosystem-based defaults:
+
+| Ecosystem | Patterns to add |
+|-----------|----------------|
+| Node (`package.json`) | `**/node_modules`, `**/.next`, `**/.nuxt`, `**/.cache`, `**/.turbo`, `**/dist`, `**/build` |
+| Python (`pyproject.toml` / `requirements.txt`) | `**/__pycache__`, `**/.venv`, `**/venv`, `**/.tox` |
+| Rust (`Cargo.toml`) | `**/target` |
+| Go (`go.mod`) | `**/vendor`, `**/bin` |
+| Always | `**/.git`, `**/.pi` |
+
+The merged set (deduplicated) becomes the suggested `excludePatterns` in your proposal.
 
 ### Step 2: Propose configuration to the user
 
@@ -32,7 +43,7 @@ Based on project detection, propose defaults for each config field. Ask the user
 | Field | Description | Suggested Default |
 |-------|-------------|-------------------|
 | `watchPatterns` | File patterns to watch for changes | Based on language and project structure (e.g., `["src/**/*", "test/**/*"]`) |
-| `excludePatterns` | File patterns to exclude from watching | `["**/*.lock"]` (keep minimal — only lock files and generated artifacts) |
+| `excludePatterns` | File patterns to exclude from watching | Merged from `.gitignore` directory patterns + ecosystem-built-ins (see Step 1.1) |
 | `checksFast` | Fast per-file checks | Separate entries with `fileFilter` (see below) |
 | `checks` | Full test suite | Based on detected test framework |
 | `release` | Release step | Script, command, or prompt based on project |

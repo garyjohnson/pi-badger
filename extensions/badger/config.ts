@@ -12,7 +12,31 @@ import type { BadgerConfig, CheckEntry } from "./types.js";
 
 export const DEFAULT_CONFIG: BadgerConfig = {
 	watchPatterns: ["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"],
-	excludePatterns: ["**/playwright-report/**", "**/test-results/**"],
+	excludePatterns: [
+		// Build / output directories
+		"**/dist",
+		"**/build",
+		"**/.next",
+		"**/.nuxt",
+		"**/.turbo",
+		// Package manager / dependency directories
+		"**/node_modules",
+		// Test output directories
+		"**/playwright-report",
+		"**/test-results",
+		// Language-specific caches
+		"**/__pycache__",
+		"**/.venv",
+		"**/venv",
+		"**/.tox",
+		// Caches and coverage
+		"**/.cache",
+		"**/coverage",
+		// Internal pi directories
+		"**/.pi",
+		// Version control
+		"**/.git",
+	],
 	notifyWithoutConfig: true,
 	debug: false,
 	checksFast: [

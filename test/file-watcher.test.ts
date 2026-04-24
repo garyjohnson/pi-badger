@@ -77,12 +77,12 @@ describe("discoverWatchedFiles", () => {
 		expect(files).not.toContain("src/package.lock");
 	});
 
-	test("skips known directories like node_modules and .git", () => {
+	test("skips directories matching exclude patterns", () => {
 		createFile(tmp.dir, "src/index.ts", "content");
 		createFile(tmp.dir, "node_modules/foo/index.js", "dep");
 		createFile(tmp.dir, ".git/HEAD", "git data");
 
-		const files = discoverWatchedFiles(tmp.dir, ["**/*"], []);
+		const files = discoverWatchedFiles(tmp.dir, ["**/*"], ["**/node_modules", "**/.git"]);
 		expect(files).toContain("src/index.ts");
 		expect(files).not.toContain("node_modules/foo/index.js");
 		expect(files).not.toContain(".git/HEAD");

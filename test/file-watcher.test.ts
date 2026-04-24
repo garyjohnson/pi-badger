@@ -88,6 +88,17 @@ describe("discoverWatchedFiles", () => {
 		expect(files).not.toContain(".git/HEAD");
 	});
 
+	test("excludes test output directories via excludePatterns", () => {
+		createFile(tmp.dir, "src/index.ts", "content");
+		createFile(tmp.dir, "playwright-report/index.html", "report");
+		createFile(tmp.dir, "test-results/.last-run.json", "{}");
+
+		const files = discoverWatchedFiles(tmp.dir, ["**/*"], ["**/playwright-report/**", "**/test-results/**"]);
+		expect(files).toContain("src/index.ts");
+		expect(files).not.toContain("playwright-report/index.html");
+		expect(files).not.toContain("test-results/.last-run.json");
+	});
+
 	test("returns sorted results", () => {
 		createFile(tmp.dir, "src/z.ts", "z");
 		createFile(tmp.dir, "src/a.ts", "a");

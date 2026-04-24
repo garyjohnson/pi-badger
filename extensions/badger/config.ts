@@ -12,7 +12,7 @@ import type { BadgerConfig, CheckEntry } from "./types.js";
 
 export const DEFAULT_CONFIG: BadgerConfig = {
 	watchPatterns: ["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"],
-	excludePatterns: [],
+	excludePatterns: ["**/playwright-report/**", "**/test-results/**"],
 	notifyWithoutConfig: true,
 	debug: false,
 	checksFast: [

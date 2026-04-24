@@ -43,7 +43,7 @@ describe("loadConfig", () => {
 		expect(result!.watchPatterns).toEqual(["src/**/*.ts"]);
 		expect(result!.debug).toBe(true);
 		// Defaults are preserved for unprovided fields
-		expect(result!.excludePatterns).toEqual([]);
+		expect(result!.excludePatterns).toEqual(["**/playwright-report/**", "**/test-results/**"]);
 		expect(result!.checksFast).toEqual(DEFAULT_CONFIG.checksFast);
 		expect(result!.checks).toEqual(DEFAULT_CONFIG.checks);
 		expect(result!.release).toEqual(DEFAULT_CONFIG.release);

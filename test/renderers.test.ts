@@ -36,9 +36,9 @@ describe("computeStatus", () => {
 		};
 	}
 
-	test("shows 'Badger ON' when enabled and idle", () => {
+	test("returns undefined when enabled and idle", () => {
 		const state = makeState();
-		expect(computeStatus(state)).toBe("🦡 Badger ON");
+		expect(computeStatus(state)).toBeUndefined();
 	});
 
 	test("shows 'Badger DISABLED' when disabled", () => {
@@ -53,17 +53,17 @@ describe("computeStatus", () => {
 
 	test("shows running label with Debug ON", () => {
 		const state = makeState({ runningLabel: "scripts/check", debugEnabled: true });
-		expect(computeStatus(state)).toBe("🦡 Badger running scripts/check | 🐛 Debug ON");
+		expect(computeStatus(state)).toBe("🦡 Badger running scripts/check | 🐛 Badger DEBUG ON");
 	});
 
 	test("shows Debug ON when enabled and idle", () => {
 		const state = makeState({ debugEnabled: true });
-		expect(computeStatus(state)).toBe("🦡 Badger ON | 🐛 Debug ON");
+		expect(computeStatus(state)).toBe("🐛 Badger DEBUG ON");
 	});
 
 	test("shows Debug ON when disabled", () => {
 		const state = makeState({ enabled: false, debugEnabled: true });
-		expect(computeStatus(state)).toBe("🦡 Badger DISABLED | 🐛 Debug ON");
+		expect(computeStatus(state)).toBe("🦡 Badger DISABLED | 🐛 Badger DEBUG ON");
 	});
 
 	test("returns undefined when no config loaded", () => {

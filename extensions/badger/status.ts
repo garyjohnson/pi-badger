@@ -10,13 +10,19 @@ import type { BadgerState } from "./types.js";
 /**
  * Compute the Badger status bar string.
  *
+ * Visibility rules:
+ *   - Always show the currently running check (if any).
+ *   - Only show "DISABLED" when Badger is disabled.
+ *   - Only show "🐛 Badger DEBUG ON" when debug mode is enabled.
+ *   - Show nothing when Badger is enabled and idle.
+ *
  * Format examples:
- *   "🦡 Badger running scripts/lint | 🐛 Debug ON"
- *   "🦡 Badger ON | 🐛 Debug ON"
- *   "🦡 Badger DISABLED | 🐛 Debug ON"
+ *   "🦡 Badger running scripts/lint | 🐛 Badger DEBUG ON"
  *   "🦡 Badger running scripts/check"
- *   "🦡 Badger ON"
  *   "🦡 Badger DISABLED"
+ *   "🦡 Badger DISABLED | 🐛 Badger DEBUG ON"
+ *   "🐛 Badger DEBUG ON"
+ *   undefined  (enabled and idle, debug off)
  */
 export function computeStatus(state: BadgerState): string | undefined {
 	if (!state.config) return undefined;
@@ -25,15 +31,17 @@ export function computeStatus(state: BadgerState): string | undefined {
 
 	if (!state.enabled) {
 		parts.push("🦡 Badger DISABLED");
-	} else if (state.runningLabel) {
+	}
+
+	if (state.runningLabel) {
 		parts.push(`🦡 Badger running ${state.runningLabel}`);
-	} else {
-		parts.push("🦡 Badger ON");
 	}
 
 	if (state.debugEnabled) {
-		parts.push("🐛 Debug ON");
+		parts.push("🐛 Badger DEBUG ON");
 	}
+
+	if (parts.length === 0) return undefined;
 
 	return parts.join(" | ");
 }

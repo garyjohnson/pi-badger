@@ -1,3 +1,5 @@
+![pi-badger header](badger-header.png)
+
 # pi-badger
 
 A quality gate extension for the [pi coding agent](https://github.com/badlogic/pi-mono). Badger automatically runs checks when files change and enforces a test-pass-release workflow.

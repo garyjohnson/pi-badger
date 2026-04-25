@@ -1,0 +1,13 @@
+{
+  "types": [
+    {"type": "feat", "release": "minor"},
+    {"type": "fix", "release": "patch"},
+    {"type": "refactor", "release": "patch"},
+    {"type": "docs", "release": false},
+    {"type": "chore", "release": false},
+    {"type": "test", "release": false},
+    {"type": "perf", "release": "patch"}
+  ],
+  "commitUrlFormat": "{{host}}/{{owner}}/{{repository}}/commit/{{hash}}",
+  "tagPrefix": "v"
+}

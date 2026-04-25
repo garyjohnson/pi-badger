@@ -37,7 +37,7 @@ export const DEFAULT_CONFIG: BadgerConfig = {
 		// Version control
 		"**/.git",
 	],
-	notifyWithoutConfig: true,
+
 	debug: false,
 	tailLines: 0,
 	showTail: false,
@@ -116,7 +116,7 @@ export function loadConfig(cwd: string): BadgerConfig | null {
 	return {
 		watchPatterns: parsed.watchPatterns ?? DEFAULT_CONFIG.watchPatterns,
 		excludePatterns: parsed.excludePatterns ?? DEFAULT_CONFIG.excludePatterns,
-		notifyWithoutConfig: parsed.notifyWithoutConfig ?? DEFAULT_CONFIG.notifyWithoutConfig,
+
 		debug: parsed.debug ?? DEFAULT_CONFIG.debug,
 		tailLines: parsed.tailLines ?? DEFAULT_CONFIG.tailLines,
 		showTail: parsed.showTail ?? DEFAULT_CONFIG.showTail,

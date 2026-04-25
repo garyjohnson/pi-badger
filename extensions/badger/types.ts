@@ -18,7 +18,6 @@ export interface CheckEntry {
 export interface BadgerConfig {
 	watchPatterns: string[];
 	excludePatterns: string[];
-	notifyWithoutConfig: boolean;
 	debug: boolean;
 	tailLines: number;
 	showTail: boolean;
@@ -68,6 +67,7 @@ export interface BadgerState {
 	isRunningChecks: boolean;
 	isRunningRelease: boolean;
 	runningLabel: string | null;
+	runningStartTime: number | null;
 	debugEnabled: boolean;
 	showTail: boolean;
 }

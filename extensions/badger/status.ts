@@ -7,6 +7,22 @@
 
 import type { BadgerState } from "./types.js";
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ----------------------------------------------------------------------------
+
+/** Format milliseconds into M:SS or H:MM:SS string. */
+function formatElapsed(ms: number): string {
+	const totalSeconds = Math.floor(ms / 1000);
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	const seconds = totalSeconds % 60;
+	if (hours > 0) {
+		return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+	}
+	return `${minutes}:${String(seconds).padStart(2, "0")}`;
+}
+
 /**
  * Compute the Badger status bar string.
  *
@@ -34,7 +50,12 @@ export function computeStatus(state: BadgerState): string | undefined {
 	}
 
 	if (state.runningLabel) {
-		parts.push(`🦡 Badger running ${state.runningLabel}`);
+		let label = `🦡 Badger running ${state.runningLabel}`;
+		if (state.runningStartTime) {
+			const elapsed = Date.now() - state.runningStartTime;
+			label += ` ${formatElapsed(elapsed)}`;
+		}
+		parts.push(label);
 	}
 
 	if (state.debugEnabled) {

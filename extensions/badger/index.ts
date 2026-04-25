@@ -41,6 +41,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		isRunningChecks: false,
 		isRunningRelease: false,
 		runningLabel: null,
+		runningStartTime: null,
 		debugEnabled: false,
 		showTail: false,
 	};
@@ -64,12 +65,10 @@ export default function badgerExtension(pi: ExtensionAPI) {
 			debugLog = new DebugLogger(ctx.cwd, envDebug);
 			debugLog.log("config", "No badger.json found", { cwd: ctx.cwd, envDebug });
 
-			if (DEFAULT_CONFIG.notifyWithoutConfig) {
-				ctx.ui.notify(
-					"Badger is installed but not configured. Run /badger:setup to get started.",
-					"info",
-				);
-			}
+			ctx.ui.notify(
+				"Badger is installed but not configured. Run /badger:setup to get started.",
+				"info",
+			);
 			return;
 		}
 
@@ -235,12 +234,14 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				if (entryFiles.length === 0) continue;
 
 				state.runningLabel = label;
+				state.runningStartTime = Date.now();
 				syncStatus(state, ctx.ui);
 				ctx.ui.notify(`🦡 Running ${label}...`, "info");
 
 				const result = await runEntry(entry, cwd, pi, { signal, changedFiles: entryFiles });
 
 				state.runningLabel = null;
+				state.runningStartTime = null;
 				syncStatus(state, ctx.ui);
 
 				if (result.aborted) {
@@ -443,6 +444,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				const releaseLabel = entryLabel(state.config.release);
 				debugLog.log("agent_release", "Starting release");
 				state.runningLabel = releaseLabel;
+				state.runningStartTime = Date.now();
 				syncStatus(state, ctx.ui);
 				ctx.ui.notify(`🦡 Running ${releaseLabel}...`, "info");
 

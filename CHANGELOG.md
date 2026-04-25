@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.6](https://github.com/garyjohnson/pi-badger/compare/v0.1.5...v0.1.6) (2026-04-25)
+
+
+* use raw.githubusercontent.com URL for inline image ([61f0029](https://github.com/garyjohnson/pi-badger/commit/61f0029d2e59994f0c414d125eff1f52d9b7e6cd))
+
 ### [0.1.5](https://github.com/garyjohnson/pi-badger/compare/v0.1.4...v0.1.5) (2026-04-25)
 
 

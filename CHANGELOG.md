@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.7](https://github.com/garyjohnson/pi-badger/compare/v0.1.6...v0.1.7) (2026-04-25)
+
+
+* replace HTML placeholder with actual header image ([18c2f0e](https://github.com/garyjohnson/pi-badger/commit/18c2f0eaa39eff42e41283981030b8931344c5cb))
+
 ### [0.1.6](https://github.com/garyjohnson/pi-badger/compare/v0.1.5...v0.1.6) (2026-04-25)
 
 

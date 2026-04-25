@@ -78,20 +78,7 @@ describe("computeStatus", () => {
 		expect(computeStatus(state)).toBeUndefined();
 	});
 
-	test("shows TAIL when showTail is enabled", () => {
-		const state = makeState({ showTail: true });
-		expect(computeStatus(state)).toBe("📺 Badger TAIL");
-	});
-
-	test("shows running label with TAIL", () => {
-		const state = makeState({ runningLabel: "scripts/check", showTail: true });
-		expect(computeStatus(state)).toBe("🦡 Badger running scripts/check | 📺 Badger TAIL");
-	});
-
-	test("shows TAIL with DEBUG ON", () => {
-		const state = makeState({ showTail: true, debugEnabled: true });
-		expect(computeStatus(state)).toBe("📺 Badger TAIL | 🐛 Badger DEBUG ON");
-	});
+	// Note: showTail is no longer displayed in the status bar
 });
 
 // ---------------------------------------------------------------------------

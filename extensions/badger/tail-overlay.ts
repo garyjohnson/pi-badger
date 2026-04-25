@@ -237,7 +237,7 @@ export function runWithTailOverlay(
 		}, 1500);
 	});
 
-	// Handle abort signal
+	// Handle abort signal from external source
 	if (signal) {
 		if (signal.aborted) {
 			proc.kill("SIGTERM");
@@ -245,8 +245,8 @@ export function runWithTailOverlay(
 				resolved = true;
 				done({
 					exitCode: -1,
-					stdout: "",
-					stderr: "Aborted by user",
+					stdout,
+					stderr,
 					aborted: true,
 					elapsed: Date.now() - startTime,
 				});
@@ -259,14 +259,32 @@ export function runWithTailOverlay(
 				resolved = true;
 				done({
 					exitCode: -1,
-					stdout: "",
-					stderr: "Aborted by user",
+					stdout,
+					stderr,
 					aborted: true,
 					elapsed: Date.now() - startTime,
 				});
 			}
 		}, { once: true });
 	}
+
+	// When done is called with null, the user aborted (pressed ESC) — kill the process
+	const originalDone = done;
+	done = (result) => {
+		if (result === null && !resolved) {
+			resolved = true;
+			proc.kill("SIGTERM");
+			originalDone({
+				exitCode: -1,
+				stdout,
+				stderr,
+				aborted: true,
+				elapsed: Date.now() - startTime,
+			});
+			return;
+		}
+		originalDone(result);
+	};
 }
 
 // ---------------------------------------------------------------------------

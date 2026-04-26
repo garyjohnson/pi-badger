@@ -16,21 +16,58 @@
 | Type check | `bunx tsc --noEmit` |
 | Dry run release | `bun run release:dry` |
 | Release | `bun run release` |
+| Session stats (all) | `bun scripts/session-stats.ts` |
+| Session stats (latest) | `bun scripts/session-stats.ts --latest` |
 
 ## Git Workflow
 
 The `main` branch is protected. **Never push directly to `main`.** Always create a feature branch and open a pull request.
 
+### Branch naming
+
+```
+<type>/<short-description>-<model>
+```
+
+- `<type>`: conventional commit type (`feat`, `fix`, `refactor`, `chore`, etc.)
+- `<short-description>`: brief hyphenated description
+- `<model>`: the primary model that worked on the change (short name, e.g. `glm5`, `kimi`, `qwen`)
+
+Examples:
+- `feat/status-bar-timer-glm5`
+- `fix/timer-leak-glm5`
+- `chore/release-workflow-glm5`
+
 ### Creating a PR
 
 ```bash
 # Create a feature branch
-git checkout -b feat/my-feature
+git checkout -b feat/status-bar-timer-glm5
 
 # Make commits following conventional format, then:
-git push -u origin feat/my-feature
-gh pr create --title "feat: my feature" --body "Description of the change"
+git push -u origin feat/status-bar-timer-glm5
+
+# Include session stats in the PR body:
+bun scripts/session-stats.ts --latest
+
+gh pr create --title "feat: show running time in status bar" --body "$(cat <<'EOF'
+## Summary
+
+<describe the change>
+
+## Session cost
+
+<paste output of bun scripts/session-stats.ts --latest here>
+EOF
+)"
 ```
+
+### PR description template
+
+Every PR should include:
+
+1. **Summary** — what changed and why
+2. **Session cost** — paste the output of `./scripts/session-stats.sh --latest` (or `./scripts/session-stats.sh` for all sessions). This shows models used, token counts, and cost.
 
 ### Updating a PR
 
@@ -112,7 +149,7 @@ git pull
 git checkout -b chore/release
 bun run release
 git push -u origin chore/release
-gh pr create --title "chore: release v$(node -p "require('./package.json').version")" --body "Manual version bump and changelog update."
+gh pr create --title "chore: release v$(node -p "require('./package.json').version")" --body "Manual version bump and changelog update.\n\n## Session cost\n\n$(bun scripts/session-stats.ts --latest)"
 # After merge, CI will handle tagging and GitHub Release
 ```
 

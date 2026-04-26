@@ -1,4 +1,4 @@
-# pi-badger
+# Badger (pi extension)
 
 ![pi-badger header](https://raw.githubusercontent.com/garyjohnson/pi-badger/main/badger-header.jpg)
 

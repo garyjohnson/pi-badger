@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.34](https://github.com/garyjohnson/pi-badger/compare/v0.1.33...v0.1.34) (2026-04-26)
+
+
+* don't show success message for prompt-based releases ([9b2d9e8](https://github.com/garyjohnson/pi-badger/commit/9b2d9e87ef717c2418a54777f4d1b0127b0859cb))
+* fail workflow if tag already exists ([e1a977b](https://github.com/garyjohnson/pi-badger/commit/e1a977ba6adaa0fa6168e974eec49cdbb99d4fec))
+* remove .pi from gitignore but ignore badger debug log ([20442a1](https://github.com/garyjohnson/pi-badger/commit/20442a1a976135b1602aeed40f5ff7911311588e))
+
 ### [0.1.33](https://github.com/garyjohnson/pi-badger/compare/v0.1.32...v0.1.33) (2026-04-26)
 
 

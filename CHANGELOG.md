@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.32](https://github.com/garyjohnson/pi-badger/compare/v0.1.31...v0.1.32) (2026-04-26)
+
+
+* update extension and test modules ([386f5cb](https://github.com/garyjohnson/pi-badger/commit/386f5cb32fddc167a73c60599efa13862d2adbd5))
+
 ### [0.1.31](https://github.com/garyjohnson/pi-badger/compare/v0.1.30...v0.1.31) (2026-04-26)
 
 

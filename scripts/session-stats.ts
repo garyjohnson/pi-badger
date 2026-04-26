@@ -16,6 +16,40 @@ import type { JsonlEntry, AssistantMessage } from "./session-stats-types.js";
 // Helpers
 // ---------------------------------------------------------------------------
 
+function extractPRs(files: string[]): string[] {
+	const prUrls = new Set<string>();
+	const prRegex = /https:\/\/github\.com\/([^\/]+)\/([^\/]+)\/pull\/\d+/g;
+
+	for (const file of files) {
+		const content = fs.readFileSync(file, "utf-8");
+		for (const line of content.split("\n")) {
+			if (!line.trim()) continue;
+			try {
+				const obj: JsonlEntry = JSON.parse(line);
+				if (obj.type === "message" && obj.message?.role === "assistant") {
+					const msg: AssistantMessage = obj.message;
+					const content = msg.content ?? [];
+					if (Array.isArray(content)) {
+						for (const c of content) {
+							if (typeof c === "object" && c !== null && "text" in c) {
+								const text = String(c.text);
+								let match;
+								while ((match = prRegex.exec(text)) !== null) {
+									prUrls.add(match[0]);
+								}
+							}
+						}
+					}
+				}
+			} catch {
+				// skip malformed lines
+			}
+		}
+	}
+
+	return [...prUrls].sort();
+}
+
 function fmtTokens(n: number): string {
 	if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
 	if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
@@ -82,7 +116,7 @@ function collectStats(files: string[]): Map<string, ModelStats> {
 	return models;
 }
 
-function printReport(models: Map<string, ModelStats>): void {
+function printReport(models: Map<string, ModelStats>, prs: string[]): void {
 	const sorted = [...models.entries()].sort((a, b) => b[1].cost - a[1].cost);
 
 	let totalCost = 0;
@@ -104,6 +138,15 @@ function printReport(models: Map<string, ModelStats>): void {
 	if (totalTokens === 0) {
 		console.log("No assistant messages found in sessions.");
 		return;
+	}
+
+	// PRs section (if any)
+	if (prs.length > 0) {
+		console.log("### PRs created this session\n");
+		for (const pr of prs) {
+			console.log(`- ${pr}`);
+		}
+		console.log();
 	}
 
 	// Main table
@@ -150,4 +193,5 @@ if (files.length === 0) {
 }
 
 const models = collectStats(files);
-printReport(models);
+const prs = extractPRs(files);
+printReport(models, prs);

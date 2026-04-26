@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# Badger release — runs standard-version to bump version and update changelog
+set -euo pipefail
+
+echo "Running release..."
+bun run release
+echo "Release complete"

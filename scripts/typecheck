@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Badger fast typecheck — runs tsc on changed TypeScript files
+set -euo pipefail
+
+# Files are passed as arguments
+if [ $# -eq 0 ]; then
+    echo "No TypeScript files to check"
+    exit 0
+fi
+
+echo "Typechecking $# file(s)..."
+bunx tsc --noEmit "$@"
+echo "TypeScript check passed"

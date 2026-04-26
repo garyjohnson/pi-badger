@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.14](https://github.com/garyjohnson/pi-badger/compare/v0.1.13...v0.1.14) (2026-04-26)
+
+
+* move /badger: commands section before configuration docs ([26ab44d](https://github.com/garyjohnson/pi-badger/commit/26ab44d573a4509a96ae0cfdc92ca21a0c3f405f))
+
 ### [0.1.13](https://github.com/garyjohnson/pi-badger/compare/v0.1.12...v0.1.13) (2026-04-26)
 
 

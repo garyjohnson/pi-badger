@@ -6,7 +6,7 @@
 
 A quality gate extension for the [pi coding agent](https://github.com/badlogic/pi-mono). Badger automatically runs checks when files change and enforces a test-pass-release workflow.
 
-<video src="demo.mp4" controls>demo.mp4</video>
+![Demo](demo.avif)
 
 ## Priorities
 

@@ -2,6 +2,8 @@
 
 # pi-badger
 
+> Your agent thinks it's done. Badger it until it actually is.
+
 A quality gate extension for the [pi coding agent](https://github.com/badlogic/pi-mono). Badger automatically runs checks when files change and enforces a test-pass-release workflow.
 
 ## How It Works

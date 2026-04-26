@@ -36,12 +36,33 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Run standard-version
-        run: bun run release
+        id: standard-version
+        run: |
+          # standard-version exits 1 if no new version (no commits since last release)
+          # If it exits 1, we check if there's actually a new commit
+          if bun run release; then
+            echo "bumped=true" >> "$GITHUB_OUTPUT"
+          else
+            # Check if there was a version bump by comparing tags
+            OLD_TAG=$(git describe --tags --abbrev=0 HEAD^)
+            NEW_TAG=$(git describe --tags --abbrev=0)
+            if [ "$OLD_TAG" != "$NEW_TAG" ]; then
+              echo "bumped=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "bumped=false" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Skip if no version bump
+        if: steps.standard-version.outputs.bumped != 'true'
+        run: echo "No version bump detected, skipping release"
 
       - name: Push version bump and tags
+        if: steps.standard-version.outputs.bumped == 'true'
         run: git push --follow-tags origin main
 
       - name: Extract release notes from CHANGELOG
+        if: steps.standard-version.outputs.bumped == 'true'
         id: release-notes
         run: |
           TAG=$(git describe --tags --abbrev=0)
@@ -53,6 +74,7 @@ jobs:
           echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
+        if: steps.standard-version.outputs.bumped == 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release create "${{ steps.release-notes.outputs.tag }}" --title "${{ steps.release-notes.outputs.tag }}" --notes "${{ steps.release-notes.outputs.notes }}"

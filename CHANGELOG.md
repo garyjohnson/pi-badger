@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.15](https://github.com/garyjohnson/pi-badger/compare/v0.1.14...v0.1.15) (2026-04-26)
+
+
+* short-circuit on first check failure ([f39be65](https://github.com/garyjohnson/pi-badger/commit/f39be65eace0de007a8ed483e699ecc890d6e89b))
+
 ### [0.1.14](https://github.com/garyjohnson/pi-badger/compare/v0.1.13...v0.1.14) (2026-04-26)
 
 

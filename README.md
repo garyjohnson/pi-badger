@@ -62,6 +62,18 @@ This will:
 - Create `.pi/badger.json`
 - Create stub scripts in `scripts/`
 
+## Commands
+
+| Command | Description |
+|---------|-------------|
+| `/badger:setup` | Configure Badger for this project |
+| `/badger:enable` | Enable Badger automatic checks and release |
+| `/badger:disable` | Disable Badger automatic checks and release |
+| `/badger:check` | Manually trigger full checks |
+| `/badger:release` | Manually trigger the release step |
+| `/badger:debug` | Toggle debug mode, view log, show status |
+| `/badger:tail` | Toggle live tail overlay for full checks |
+
 ## Configuration
 
 Badger reads configuration from `.pi/badger.json` in your project root:
@@ -284,18 +296,6 @@ When debug mode is active, a `🐛 Debug ON` status indicator appears in the TUI
     modified: src/foo.ts
     added: test/bar.test.ts
 ```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `/badger:setup` | Configure Badger for this project |
-| `/badger:enable` | Enable Badger automatic checks and release |
-| `/badger:disable` | Disable Badger automatic checks and release |
-| `/badger:check` | Manually trigger full checks |
-| `/badger:release` | Manually trigger the release step |
-| `/badger:debug` | Toggle debug mode, view log, show status |
-| `/badger:tail` | Toggle live tail overlay for full checks |
 
 ## Behavior Details
 

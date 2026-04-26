@@ -40,7 +40,7 @@ export const DEFAULT_CONFIG: BadgerConfig = {
 
 	debug: false,
 	tailLines: 0,
-	showTail: false,
+	showTail: true,
 	checksFast: [
 		{
 			type: "script",

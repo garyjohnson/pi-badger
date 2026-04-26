@@ -113,7 +113,7 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 | `excludePatterns` | `string[]` | `[]` | Glob patterns to exclude — keep minimal. Defaults include `**/node_modules`, `**/dist`, `**/.git`, etc. |
 | `debug` | `boolean` | `false` | Enable debug mode — log detailed info to `.pi/badger-debug.log` |
 | `tailLines` | `number` | `0` | Limit the output lines shown in error prompts when a check fails. `0` = full output. |
-| `showTail` | `boolean` | `false` | In TUI mode, show live tail of the running check. |
+| `showTail` | `boolean` | `true` | In TUI mode, show live tail of the running check. |
 | `checksFast` | `FastCheckEntry[]` | lint, typecheck, test_changed | Fast per-file checks (script, command, or prompt). Short-circuits on first failure. |
 | `checks` | `CheckEntry[]` | (see defaults) | Full test suite (script, command, or prompt) |
 | `release` | `CheckEntry \| null` | (see defaults) | Release step (script, command, or prompt), omit to disable |

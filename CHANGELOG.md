@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.23](https://github.com/garyjohnson/pi-badger/compare/v0.1.22...v0.1.23) (2026-04-26)
+
+
+* add Badger check, release, and typecheck scripts ([2fdebff](https://github.com/garyjohnson/pi-badger/commit/2fdebff3a0b37a748c482cac141619ab260750ce))
+
 ### [0.1.22](https://github.com/garyjohnson/pi-badger/compare/v0.1.21...v0.1.22) (2026-04-26)
 
 ### [0.1.21](https://github.com/garyjohnson/pi-badger/compare/v0.1.20...v0.1.21) (2026-04-26)

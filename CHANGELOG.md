@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.29](https://github.com/garyjohnson/pi-badger/compare/v0.1.23...v0.1.29) (2026-04-26)
+
+
+* **release:** 0.1.24 ([8018d65](https://github.com/garyjohnson/pi-badger/commit/8018d650c8353b7fd1b5d4a81b3e0b11e5f1faec))
+* **release:** 0.1.25 ([12d013c](https://github.com/garyjohnson/pi-badger/commit/12d013cec5b298b5ceac33c841e9b197e476302a))
+* **release:** 0.1.26 ([8015a1d](https://github.com/garyjohnson/pi-badger/commit/8015a1dcfaf5dd87885879d13254d98dbcd8fb55))
+* **release:** 0.1.27 ([95ba10b](https://github.com/garyjohnson/pi-badger/commit/95ba10bfb092df9a463567428c2a8152a5ce6289))
+* **release:** 0.1.28 ([789dcda](https://github.com/garyjohnson/pi-badger/commit/789dcda77747c881fe0bfd5eeb87a5b88088617c))
+* typecheck script runs tsc without file args to avoid TS5112 ([032e567](https://github.com/garyjohnson/pi-badger/commit/032e5678addd4244c6e144937a3fa9096c29d812))
+* update README title to Badger (pi extension) ([7d2668e](https://github.com/garyjohnson/pi-badger/commit/7d2668e2caa83a692952eed68c3eb1543837895d))
+
 ### [0.1.28](https://github.com/garyjohnson/pi-badger/compare/v0.1.27...v0.1.28) (2026-04-26)
 
 ### [0.1.27](https://github.com/garyjohnson/pi-badger/compare/v0.1.26...v0.1.27) (2026-04-26)

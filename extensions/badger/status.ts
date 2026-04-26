@@ -11,8 +11,11 @@ import type { BadgerState } from "./types.js";
 // Helpers
 // ----------------------------------------------------------------------------
 
-/** Format milliseconds into M:SS or H:MM:SS string. */
+/** Format milliseconds into M:SS or H:MM:SS string.
+ *  Clamp negative values to 0:00 to avoid garbled display from clock skew.
+ */
 function formatElapsed(ms: number): string {
+	if (ms < 0) ms = 0;
 	const totalSeconds = Math.floor(ms / 1000);
 	const hours = Math.floor(totalSeconds / 3600);
 	const minutes = Math.floor((totalSeconds % 3600) / 60);
@@ -65,4 +68,32 @@ export function computeStatus(state: BadgerState): string | undefined {
 	if (parts.length === 0) return undefined;
 
 	return parts.join(" | ");
+}
+
+// ---------------------------------------------------------------------------
+// Status timer — periodically refresh the status bar to tick the elapsed time
+// ----------------------------------------------------------------------------
+
+/** Start a 1-second interval that re-computes and sets the status bar string.
+ *  Call this when `runningLabel`/`runningStartTime` are set.
+ *  Safe to call if a timer is already running — it will clear the old one first.
+ */
+export function startStatusTimer(
+	state: BadgerState,
+	ui: { setStatus: (key: string, value: string | undefined) => void },
+): void {
+	stopStatusTimer(state);
+	state.statusTimer = setInterval(() => {
+		ui.setStatus("badger", computeStatus(state));
+	}, 1000);
+}
+
+/** Stop the status bar refresh timer.
+ *  Call this when `runningLabel`/`runningStartTime` are cleared.
+ */
+export function stopStatusTimer(state: BadgerState): void {
+	if (state.statusTimer) {
+		clearInterval(state.statusTimer);
+		state.statusTimer = null;
+	}
 }

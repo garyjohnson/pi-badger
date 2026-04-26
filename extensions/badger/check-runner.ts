@@ -11,6 +11,7 @@ import type { BadgerState, CheckEntry, RunResult } from "./types.js";
 import { DebugLogger } from "./debug-logger.js";
 import { runEntry, entryLabel } from "./runner.js";
 import { TailOverlay, runWithTailOverlay, type StreamedRunResult } from "./tail-overlay.js";
+import { startStatusTimer, stopStatusTimer } from "./status.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -58,67 +59,70 @@ export async function runCheckEntryWithOptionalTail(
 	}
 
 	state.runningLabel = label;
-	syncStatusFn(state, ctx.ui);
+	state.runningStartTime = Date.now();
+	startStatusTimer(state, ctx.ui);
 	ctx.ui.notify(`🦡 Running ${label}...`, "info");
 
-	const shouldTail = state.showTail && entry.type !== "prompt";
-	const command = getCommandForEntry(entry, cwd);
+	try {
+		const shouldTail = state.showTail && entry.type !== "prompt";
+		const command = getCommandForEntry(entry, cwd);
 
-	if (shouldTail && ctx.hasUI && command) {
-		// Run with streaming tail overlay
-		const tailLineCount = state.config?.tailLines ?? 15;
-		const maxVisibleLines = Math.max(5, Math.min(tailLineCount, 30));
+		if (shouldTail && ctx.hasUI && command) {
+			// Run with streaming tail overlay
+			const tailLineCount = state.config?.tailLines ?? 15;
+			const maxVisibleLines = Math.max(5, Math.min(tailLineCount, 30));
 
-		const result = await ctx.ui.custom<StreamedRunResult | null>((tui, theme, _kb, done) => {
-			const overlay = new TailOverlay(label, maxVisibleLines, theme, () => done(null));
+			const result = await ctx.ui.custom<StreamedRunResult | null>((tui, theme, _kb, done) => {
+				const overlay = new TailOverlay(label, maxVisibleLines, theme, () => done(null));
 
-			runWithTailOverlay(command, cwd, overlay, tui, done);
+				runWithTailOverlay(command, cwd, overlay, tui, done);
 
-			return overlay;
-		}, {
-			overlay: true,
-			overlayOptions: {
-				anchor: "bottom-right",
-				width: "60%",
-				minWidth: 40,
-				margin: 1,
-			},
-		});
+				return overlay;
+			}, {
+				overlay: true,
+				overlayOptions: {
+					anchor: "bottom-right",
+					width: "60%",
+					minWidth: 40,
+					margin: 1,
+				},
+			});
 
-		state.runningLabel = null;
-		syncStatusFn(state, ctx.ui);
+			if (result === null) {
+				// Overlay was dismissed — treat as user abort
+				debugLog.log(category, "Overlay dismissed by user", { label });
+				return { exitCode: -1, stdout: "", stderr: "Aborted by user", aborted: true };
+			}
 
-		if (result === null) {
-			// Overlay was dismissed — treat as user abort
-			debugLog.log(category, "Overlay dismissed by user", { label });
-			return { exitCode: -1, stdout: "", stderr: "Aborted by user", aborted: true };
+			debugLog.log(category, "Check completed (with tail)", {
+				type: entry.type,
+				label,
+				exitCode: result.exitCode,
+				elapsedMs: result.elapsed,
+			});
+
+			return result;
 		}
 
-		debugLog.log(category, "Check completed (with tail)", {
+		// Standard non-streaming run (fallback)
+		const result = await runEntry(entry, cwd, pi);
+
+		debugLog.log(category, "Check completed", {
 			type: entry.type,
 			label,
 			exitCode: result.exitCode,
 			elapsedMs: result.elapsed,
+			stdoutLength: result.stdout.length,
+			stderrLength: result.stderr.length,
+			stdout: result.stdout.length <= 500 ? result.stdout : result.stdout.slice(0, 500) + "...[truncated]",
+			stderr: result.stderr.length <= 500 ? result.stderr : result.stderr.slice(0, 500) + "...[truncated]",
 		});
 
 		return result;
+	} finally {
+		state.runningLabel = null;
+		state.runningStartTime = null;
+		stopStatusTimer(state);
+		syncStatusFn(state, ctx.ui);
 	}
-
-	// Standard non-streaming run (fallback)
-	const result = await runEntry(entry, cwd, pi);
-	state.runningLabel = null;
-	syncStatusFn(state, ctx.ui);
-
-	debugLog.log(category, "Check completed", {
-		type: entry.type,
-		label,
-		exitCode: result.exitCode,
-		elapsedMs: result.elapsed,
-		stdoutLength: result.stdout.length,
-		stderrLength: result.stderr.length,
-		stdout: result.stdout.length <= 500 ? result.stdout : result.stdout.slice(0, 500) + "...[truncated]",
-		stderr: result.stderr.length <= 500 ? result.stderr : result.stderr.slice(0, 500) + "...[truncated]",
-	});
-
-	return result;
 }

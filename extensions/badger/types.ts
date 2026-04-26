@@ -69,6 +69,7 @@ export interface BadgerState {
 	isRunningRelease: boolean;
 	runningLabel: string | null;
 	runningStartTime: number | null;
+	statusTimer: ReturnType<typeof setInterval> | null;
 	debugEnabled: boolean;
 	showTail: boolean;
 	fastFail: boolean;

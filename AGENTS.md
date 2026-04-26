@@ -14,14 +14,101 @@
 | Install dependencies | `bun install` |
 | Run tests | `bun test --isolate` |
 | Type check | `bunx tsc --noEmit` |
-| Dry run release | `bun run release:dry` |
-| Release | `bun run release` |
+| Dry run release | `bun run release` |
+| Release (create PR) | See Git Workflow below |
+| Session stats (all) | `bun scripts/session-stats.ts` |
+| Session stats (latest) | `bun scripts/session-stats.ts --latest` |
 
-## Versioning
+## Git Workflow
+
+The `main` branch is protected. **Never push directly to `main`.** Always create a feature branch and open a pull request.
+
+### Branch naming
+
+```
+<type>/<short-description>-<model>
+```
+
+- `<type>`: conventional commit type (`feat`, `fix`, `refactor`, `chore`, etc.)
+- `<short-description>`: brief hyphenated description
+- `<model>`: the primary model that worked on the change (short name, e.g. `glm5`, `kimi`, `qwen`)
+
+Examples:
+- `feat/status-bar-timer-glm5`
+- `fix/timer-leak-glm5`
+- `chore/release-workflow-glm5`
+
+### Creating a PR
+
+```bash
+# Create a feature branch
+git checkout -b feat/status-bar-timer-glm5
+
+# Make commits following conventional format, then:
+git push -u origin feat/status-bar-timer-glm5
+
+# Include session stats in the PR body:
+bun scripts/session-stats.ts --latest
+
+gh pr create --title "feat: show running time in status bar" --body "$(cat <<'EOF'
+## Summary
+
+<describe the change>
+
+## Session cost
+
+<paste output of bun scripts/session-stats.ts --latest here>
+EOF
+)"
+```
+
+### PR description template
+
+Every PR should include:
+
+1. **Summary** — what changed and why
+2. **Session cost** — paste the output of `./scripts/session-stats.sh --latest` (or `./scripts/session-stats.sh` for all sessions). This shows models used, token counts, and cost.
+
+### Updating a PR
+
+```bash
+git add ...
+git commit -m "fix: address review feedback"
+git push
+```
+
+### Merging
+
+After CI passes and review is approved, merge via:
+
+```bash
+gh pr merge --squash --delete-branch
+```
+
+## Versioning & Releases
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/) with [standard-version](https://github.com/conventional-changelog/standard-version) for automated versioning and changelog generation.
 
-### Commit Message Format
+### How releases work
+
+Releases happen **automatically on every merge to `main`**. The CI workflow (`.github/workflows/release.yml`):
+
+1. Detects a push to `main` (i.e., a PR merge)
+2. Runs tests
+3. Runs `standard-version` to bump the version and update `CHANGELOG.md`
+4. Pushes the version bump commit and git tag to `main`
+5. Creates a GitHub Release with changelog notes
+
+The version bump depends on the commit messages in the merged PR:
+
+| Commit type | Version bump |
+|-------------|--------------|
+| `feat` | minor (0.x.0) |
+| `fix`, `refactor`, `perf` | patch (0.0.x) |
+| `feat!` or `BREAKING CHANGE` | major (x.0.0) |
+| `docs`, `chore`, `test` | none |
+
+### Commit message format
 
 ```
 <type>(<scope>): <description>
@@ -31,81 +118,52 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) w
 [optional footer]
 ```
 
-### Types
-
-| Type | Version Bump | Description |
-|------|--------------|-------------|
-| `feat` | minor (0.x.0) | New feature |
-| `fix` | patch (0.0.x) | Bug fix |
-| `refactor` | patch | Code refactoring |
-| `perf` | patch | Performance improvement |
-| `docs` | none | Documentation only |
-| `chore` | none | Maintenance |
-| `test` | none | Tests |
-
-### Breaking Changes
-
-Append `!` to the type to introduce a breaking change:
-
-```
-feat!: change API surface
-```
-
-This triggers a major version bump (x.0.0).
-
-### Examples
+Examples:
 
 ```bash
-# New feature
 git commit -m "feat: add fileFilter for routing changed files"
-
-# Bug fix
 git commit -m "fix: resolve race condition in file watcher"
-
-# Breaking change
 git commit -m "feat!: remove deprecated check type"
-
-# Docs only
 git commit -m "docs: update installation instructions"
 ```
 
-### Release Workflow
+### Setup: RELEASE_TOKEN
 
-#### Manual Release
+The workflow pushes version bump commits back to the protected `main` branch, which requires a Personal Access Token (PAT) with write access that can bypass branch protections.
 
-1. **Make commits** following the conventional format
-2. **Dry run** to see what version bump will happen:
-   ```bash
-   bun run release:dry
-   ```
-3. **Release** to bump version, update CHANGELOG, and create git tag:
-   ```bash
-   bun run release
-   ```
-4. **Push** to remote:
-   ```bash
-   git push && git push --tags
-   ```
+To set this up:
 
-#### Automated Release (CI)
+1. Create a fine-grained PAT with **Contents: Read and write** permission for this repo
+2. Grant the PAT's user/account "Bypass branch protections" permission in **Settings → Branch protection rules → main**
+3. Add the PAT as a repository secret named **`RELEASE_TOKEN`** in **Settings → Secrets and variables → Actions**
 
-The project includes a GitHub Actions workflow (`.github/workflows/release.yml`) that:
-- Triggers on push to `main`
-- Runs tests
-- Automatically bumps version using `standard-version`
-- Updates CHANGELOG.md
-- Creates and pushes git tags
+If `RELEASE_TOKEN` is not set, the workflow falls back to `GITHUB_TOKEN`, which may fail if `main` is protected.
 
-When you merge a PR to main, the action runs and bumps the version automatically. Users can pin to any tag (e.g., `#v0.2.0`) or use the latest by not specifying a version.
+### Manual release (rare)
 
-### Version Bump Rules
+If you need to trigger a release manually (e.g., to pick up missed commits):
 
-- `feat` → 0.x.0 (minor)
-- `fix`, `refactor`, `perf` → 0.0.x (patch)
-- `feat!`, `BREAKING CHANGE` → x.0.0 (major)
-- `docs`, `chore`, `test` → no bump
+```bash
+git checkout main
+git pull
+git checkout -b chore/release
+bun run release
+git push -u origin chore/release
+gh pr create --title "chore: release v$(node -p "require('./package.json').version")" --body "Manual version bump and changelog update.\n\n## Session cost\n\n$(bun scripts/session-stats.ts --latest)"
+# After merge, CI will handle tagging and GitHub Release
+```
 
-### Installation by Version
+### Dry run
+
+To preview what version bump and changelog will happen:
+
+```bash
+bun run release
+```
+
+This runs `standard-version --dry-run` (no commits, no tags). The actual release happens automatically when PRs merge to `main` — see the Git Workflow section.
+
+### Installation by version
 
 Users can pin to a specific version:
 

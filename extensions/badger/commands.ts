@@ -6,13 +6,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import type { BadgerState, CheckEntry } from "./types.js";
+import type { BadgerState, CheckEntry, RunResult } from "./types.js";
 import { loadConfig, saveConfig, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT } from "./config.js";
 import { formatSingleFailureMessage, formatMultiFailureMessage, type CheckFailure } from "./renderers.js";
 import { DebugLogger } from "./debug-logger.js";
 import { buildHashMap, rebuildHashMap, diffHashMaps, diffFilePaths } from "./file-watcher.js";
 import { runEntry, entryLabel } from "./runner.js";
 import { runCheckEntryWithOptionalTail } from "./check-runner.js";
+import { startStatusTimer, stopStatusTimer } from "./status.js";
 
 const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 
@@ -33,11 +34,18 @@ async function runReleaseEntry(
 ): Promise<{ success: boolean; output: string }> {
 	const label = entryLabel(release);
 	state.runningLabel = label;
-	syncStatus(state, ui);
+	state.runningStartTime = Date.now();
+	startStatusTimer(state, ui);
 	ui.notify(`🦡 Running ${label}...`, "info");
-	const result = await runEntry(release, cwd, pi);
-	state.runningLabel = null;
-	syncStatus(state, ui);
+	let result: RunResult;
+	try {
+		result = await runEntry(release, cwd, pi);
+	} finally {
+		state.runningLabel = null;
+		state.runningStartTime = null;
+		stopStatusTimer(state);
+		syncStatus(state, ui);
+	}
 
 	debugLog.log("release", "Release completed", {
 		type: release.type,

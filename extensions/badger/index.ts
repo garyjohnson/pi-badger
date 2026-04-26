@@ -19,7 +19,7 @@ import { rebuildHashMap, diffHashMaps, diffFilePaths, summarizeHashMap } from ".
 import { runEntry, entryLabel } from "./runner.js";
 import { registerCommands } from "./commands.js";
 import { registerRenderers, formatSingleFailureMessage, formatMultiFailureMessage, type CheckFailure } from "./renderers.js";
-import { computeStatus } from "./status.js";
+import { computeStatus, startStatusTimer, stopStatusTimer } from "./status.js";
 import { runCheckEntryWithOptionalTail } from "./check-runner.js";
 
 // ---------------------------------------------------------------------------
@@ -42,6 +42,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		isRunningRelease: false,
 		runningLabel: null,
 		runningStartTime: null,
+		statusTimer: null,
 		debugEnabled: false,
 		showTail: false,
 		fastFail: true,
@@ -237,14 +238,18 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 				state.runningLabel = label;
 				state.runningStartTime = Date.now();
-				syncStatus(state, ctx.ui);
+				startStatusTimer(state, ctx.ui);
 				ctx.ui.notify(`🦡 Running ${label}...`, "info");
 
-				const result = await runEntry(entry, cwd, pi, { signal, changedFiles: entryFiles });
-
-				state.runningLabel = null;
-				state.runningStartTime = null;
-				syncStatus(state, ctx.ui);
+				let result: { exitCode: number; stdout: string; stderr: string; aborted: boolean; elapsed?: number };
+				try {
+					result = await runEntry(entry, cwd, pi, { signal, changedFiles: entryFiles });
+				} finally {
+					state.runningLabel = null;
+					state.runningStartTime = null;
+					stopStatusTimer(state);
+					syncStatus(state, ctx.ui);
+				}
 
 				if (result.aborted) {
 					debugLog.log("fast_check", "Cancelled during execution — new changes superseded this run", {
@@ -470,7 +475,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				debugLog.log("agent_release", "Starting release");
 				state.runningLabel = releaseLabel;
 				state.runningStartTime = Date.now();
-				syncStatus(state, ctx.ui);
+				startStatusTimer(state, ctx.ui);
 				ctx.ui.notify(`🦡 Running ${releaseLabel}...`, "info");
 
 				try {
@@ -517,6 +522,8 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				} finally {
 					state.isRunningRelease = false;
 					state.runningLabel = null;
+					state.runningStartTime = null;
+					stopStatusTimer(state);
 					syncStatus(state, ctx.ui);
 				}
 			}

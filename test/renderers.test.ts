@@ -8,7 +8,7 @@ import {
 	formatSingleFailureMessage,
 	formatMultiFailureMessage,
 } from "../extensions/badger/renderers.js";
-import { computeStatus } from "../extensions/badger/status.js";
+import { computeStatus, startStatusTimer, stopStatusTimer } from "../extensions/badger/status.js";
 import type { BadgerState } from "../extensions/badger/types.js";
 
 // ---------------------------------------------------------------------------
@@ -36,8 +36,11 @@ describe("computeStatus", () => {
 			isRunningChecks: false,
 			isRunningRelease: false,
 			runningLabel: null,
+			runningStartTime: null,
+			statusTimer: null,
 			debugEnabled: false,
 			showTail: false,
+			fastFail: true,
 			...overrides,
 		};
 	}
@@ -83,6 +86,317 @@ describe("computeStatus", () => {
 	});
 
 	// Note: showTail is no longer displayed in the status bar
+
+	test("shows running label with elapsed time rounding down seconds", () => {
+		const fakeNow = 1700000000000;
+		const origNow = Date.now;
+		Date.now = () => fakeNow;
+		try {
+			// 59,999ms = 59.999 seconds → should show 0:59 (floor, not round)
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: fakeNow - 59999,
+			});
+			expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint 0:59");
+		} finally {
+			Date.now = origNow;
+		}
+	});
+
+	test("shows running label at exactly 1 minute boundary", () => {
+		const fakeNow = 1700000000000;
+		const origNow = Date.now;
+		Date.now = () => fakeNow;
+		try {
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: fakeNow - 60000,
+			});
+			expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint 1:00");
+		} finally {
+			Date.now = origNow;
+		}
+	});
+
+	test("shows running label at 59:59 (just under 1 hour)", () => {
+		const fakeNow = 1700000000000;
+		const origNow = Date.now;
+		Date.now = () => fakeNow;
+		try {
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: fakeNow - 3599999, // 59:59.999
+			});
+			expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint 59:59");
+		} finally {
+			Date.now = origNow;
+		}
+	});
+
+	test("shows running label with elapsed time when runningStartTime is set", () => {
+		const fakeNow = 1700000000000; // fixed timestamp
+		const origNow = Date.now;
+		Date.now = () => fakeNow;
+		try {
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: fakeNow - 65000, // 1:05 elapsed
+			});
+			expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint 1:05");
+		} finally {
+			Date.now = origNow;
+		}
+	});
+
+	test("shows running label with hours when elapsed >= 1 hour", () => {
+		const fakeNow = 1700000000000;
+		const origNow = Date.now;
+		Date.now = () => fakeNow;
+		try {
+			const state = makeState({
+				runningLabel: "scripts/check",
+				runningStartTime: fakeNow - 3665000, // 1:01:05 elapsed
+			});
+			expect(computeStatus(state)).toBe("🦡 Badger running scripts/check 1:01:05");
+		} finally {
+			Date.now = origNow;
+		}
+	});
+
+	test("shows running label without time when runningStartTime is null", () => {
+		const state = makeState({
+			runningLabel: "scripts/lint",
+			runningStartTime: null,
+		});
+		expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint");
+	});
+
+	test("shows running label with zero elapsed time", () => {
+		const fakeNow = 1700000000000;
+		const origNow = Date.now;
+		Date.now = () => fakeNow;
+		try {
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: fakeNow, // 0ms elapsed
+			});
+			expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint 0:00");
+		} finally {
+			Date.now = origNow;
+		}
+	});
+
+	test("shows running label with elapsed time and debug", () => {
+		const fakeNow = 1700000000000;
+		const origNow = Date.now;
+		Date.now = () => fakeNow;
+		try {
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: fakeNow - 30000, // 0:30 elapsed
+				debugEnabled: true,
+			});
+			expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint 0:30 | 🐛 Badger DEBUG ON");
+		} finally {
+			Date.now = origNow;
+		}
+	});
+
+	test("clamps negative elapsed time to 0:00 (clock skew)", () => {
+		const fakeNow = 1700000000000;
+		const origNow = Date.now;
+		Date.now = () => fakeNow;
+		try {
+			// runningStartTime in the future → negative elapsed → should clamp to 0:00
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: fakeNow + 10000, // 10 seconds in the future
+			});
+			expect(computeStatus(state)).toBe("🦡 Badger running scripts/lint 0:00");
+		} finally {
+			Date.now = origNow;
+		}
+	});
+});
+
+// ---------------------------------------------------------------------------
+// startStatusTimer / stopStatusTimer
+// ---------------------------------------------------------------------------
+
+describe("startStatusTimer / stopStatusTimer", () => {
+	function makeState(overrides: Partial<BadgerState> = {}): BadgerState {
+		return {
+			config: {
+				watchPatterns: ["src/**/*"],
+				excludePatterns: [],
+				debug: false,
+				tailLines: 0,
+				showTail: true,
+				fastFail: true,
+				checksFast: [],
+				checks: [],
+				release: null,
+			},
+			enabled: true,
+			currentHashMap: new Map(),
+			lastRunHashMap: new Map(),
+			fastCheckAbortController: null,
+			isRunningChecks: false,
+			isRunningRelease: false,
+			runningLabel: null,
+			runningStartTime: null,
+			statusTimer: null,
+			debugEnabled: false,
+			showTail: false,
+			fastFail: true,
+			...overrides,
+		};
+	}
+
+	test("startStatusTimer sets a timer on state that calls setStatus on interval", () => {
+		const fakeNow = 1700000000000;
+		const origNow = Date.now;
+		const origSetInterval = globalThis.setInterval;
+		const origClearInterval = globalThis.clearInterval;
+		let capturedCallback: (() => void) | null = null;
+		let intervalIds: any[] = [];
+
+		Date.now = () => fakeNow;
+
+		// Mock setInterval to capture the callback and immediately return a fake id
+		globalThis.setInterval = (cb: any, _ms: number) => {
+			capturedCallback = cb;
+			const id = { fake: true, idx: intervalIds.length };
+			intervalIds.push(id);
+			return id as any;
+		};
+		globalThis.clearInterval = (_id: any) => {};
+
+		try {
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: fakeNow - 5000,
+			});
+			const setStatusCalls: Array<[string, string | undefined]> = [];
+			const ui = {
+				setStatus: (key: string, value: string | undefined) => {
+					setStatusCalls.push([key, value]);
+				},
+			};
+
+			startStatusTimer(state, ui);
+
+			expect(state.statusTimer).not.toBeNull();
+			expect(capturedCallback).not.toBeNull();
+
+			// Manually invoke the captured callback to simulate a timer tick
+			capturedCallback!();
+
+			expect(setStatusCalls.length).toBe(1);
+			expect(setStatusCalls[0][0]).toBe("badger");
+			expect(setStatusCalls[0][1]).toBe("🦡 Badger running scripts/lint 0:05");
+
+			stopStatusTimer(state);
+		} finally {
+			Date.now = origNow;
+			globalThis.setInterval = origSetInterval;
+			globalThis.clearInterval = origClearInterval;
+		}
+	});
+
+	test("startStatusTimer clears previous timer before starting a new one", () => {
+		const state = makeState({
+			runningLabel: "scripts/lint",
+			runningStartTime: Date.now(),
+		});
+		const ui = {
+			setStatus: () => {},
+		};
+
+		startStatusTimer(state, ui);
+		const firstTimer = state.statusTimer;
+		expect(firstTimer).not.toBeNull();
+
+		// Starting again should clear the old timer and set a new one
+		startStatusTimer(state, ui);
+		expect(state.statusTimer).not.toBe(firstTimer);
+
+		stopStatusTimer(state);
+	});
+
+	test("stopStatusTimer clears the timer and sets statusTimer to null", () => {
+		const state = makeState({
+			runningLabel: "scripts/lint",
+			runningStartTime: Date.now(),
+		});
+		const ui = {
+			setStatus: () => {},
+		};
+
+		startStatusTimer(state, ui);
+		expect(state.statusTimer).not.toBeNull();
+
+		stopStatusTimer(state);
+		expect(state.statusTimer).toBeNull();
+	});
+
+	test("stopStatusTimer is a no-op when no timer is running", () => {
+		const state = makeState();
+		expect(state.statusTimer).toBeNull();
+		// Should not throw
+		stopStatusTimer(state);
+		expect(state.statusTimer).toBeNull();
+	});
+
+	test("stopStatusTimer does not call clearInterval when statusTimer is null", () => {
+		let clearIntervalCalled = false;
+		const origClearInterval = globalThis.clearInterval;
+		globalThis.clearInterval = () => { clearIntervalCalled = true; };
+
+		try {
+			const state = makeState();
+			stopStatusTimer(state);
+			expect(clearIntervalCalled).toBe(false);
+		} finally {
+			globalThis.clearInterval = origClearInterval;
+		}
+	});
+
+	test("startStatusTimer calls clearInterval on previous timer when restarting", () => {
+		const origClearInterval = globalThis.clearInterval;
+		let clearIntervalCalls: any[] = [];
+		globalThis.clearInterval = (id: any) => { clearIntervalCalls.push(id); };
+
+		const origSetInterval = globalThis.setInterval;
+		let timerCount = 0;
+		globalThis.setInterval = (cb: any, ms: number) => {
+			timerCount++;
+			return { id: timerCount } as any;
+		};
+
+		try {
+			const state = makeState({
+				runningLabel: "scripts/lint",
+				runningStartTime: Date.now(),
+			});
+			const ui = { setStatus: () => {} };
+
+			startStatusTimer(state, ui);
+			const firstTimer = state.statusTimer;
+
+			// Starting again should clear the old timer and set a new one
+			startStatusTimer(state, ui);
+			expect(state.statusTimer).not.toBe(firstTimer);
+
+			// The old timer should have been cleared
+			expect(clearIntervalCalls).toContain(firstTimer);
+
+			stopStatusTimer(state);
+		} finally {
+			globalThis.setInterval = origSetInterval;
+			globalThis.clearInterval = origClearInterval;
+		}
+	});
 });
 
 // ---------------------------------------------------------------------------
@@ -207,6 +521,7 @@ describe("BadgerState", () => {
 			isRunningRelease: false,
 			runningLabel: null,
 			runningStartTime: null,
+			statusTimer: null,
 			debugEnabled: false,
 			showTail: true,
 			fastFail: true,
@@ -227,6 +542,7 @@ describe("BadgerState", () => {
 			isRunningRelease: false,
 			runningLabel: null,
 			runningStartTime: null,
+			statusTimer: null,
 			debugEnabled: false,
 			showTail: true,
 			fastFail: true,

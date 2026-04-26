@@ -6,7 +6,7 @@
 
 A quality gate extension for the [pi coding agent](https://github.com/badlogic/pi-mono). Badger automatically runs checks when files change and enforces a test-pass-release workflow.
 
-Priorities:
+## Priorities
 
 ### HITL / HOTL over HOOTL
 Generally this is a tool targeting human-in-the-loop and human-on-the-loop workflows. It's not meant to be a bullet-proof unattended quality gate.

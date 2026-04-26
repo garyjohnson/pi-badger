@@ -175,8 +175,6 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 			state.isRunningChecks = true;
 			try {
-				const failures: string[] = [];
-
 				for (const entry of state.config.checks) {
 					const result = await runCheckEntryWithOptionalTail(
 						entry, ctx.cwd, pi, state, log, syncStatus, ctx, "manual_check",
@@ -193,23 +191,23 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					if (result.exitCode !== 0) {
 						const output = result.stderr || result.stdout;
 						const failurePrompt = entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
-						failures.push(
-							`**${entryLabel(entry)}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+						const message = `Badger checks failed:\n\n**${entryLabel(entry)}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`;
+						log.log("manual_check", "Check failed", {
+							label: entryLabel(entry),
+							type: entry.type,
+							exitCode: result.exitCode,
+							output: output.slice(0, 1000),
+						});
+						pi.sendMessage(
+							{
+								customType: "badger-check-failure",
+								content: message,
+								display: true,
+							},
+							{ triggerTurn: true },
 						);
+						return; // Short-circuit on first failure
 					}
-				}
-
-				if (failures.length > 0) {
-					const message = `Badger checks failed:\n\n${failures.join("\n\n")}`;
-					pi.sendMessage(
-						{
-							customType: "badger-check-failure",
-							content: message,
-							display: true,
-						},
-						{ triggerTurn: true },
-					);
-					return;
 				}
 
 				ctx.ui.notify("✓ All checks passed", "info");

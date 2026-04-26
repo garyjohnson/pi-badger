@@ -368,7 +368,6 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		});
 
 		try {
-			const failures: string[] = [];
 
 			debugLog.log("agent_check", "Processing check entries", {
 				entries: state.config.checks.map(e => ({
@@ -410,26 +409,23 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				if (result.exitCode !== 0) {
 					const output = result.stderr || result.stdout;
 					const failurePrompt = entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
-					failures.push(
-						`**${label}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
+					const message = `Badger checks failed:\n\n**${label}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`;
+					debugLog.log("agent_check", "Check failed", {
+						label,
+						type: entry.type,
+						exitCode: result.exitCode,
+						output: output.slice(0, 1000),
+					});
+					pi.sendMessage(
+						{
+							customType: "badger-check-failure",
+							content: message,
+							display: true,
+						},
+						{ deliverAs: "steer", triggerTurn: true },
 					);
+					return; // Short-circuit on first failure
 				}
-			}
-
-			if (failures.length > 0) {
-				const message = `Badger checks failed:\n\n${failures.join("\n\n")}`;
-				debugLog.log("agent_check", "Checks failed", {
-					failureCount: failures.length,
-				});
-				pi.sendMessage(
-					{
-						customType: "badger-check-failure",
-						content: message,
-						display: true,
-					},
-					{ deliverAs: "steer", triggerTurn: true },
-				);
-				return;
 			}
 
 			debugLog.log("agent_check", "All checks passed", {

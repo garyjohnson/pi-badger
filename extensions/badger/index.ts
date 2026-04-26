@@ -488,9 +488,8 @@ export default function badgerExtension(pi: ExtensionAPI) {
 						{ deliverAs: "steer" },
 					);
 
-					// Prompt entries are fire-and-forget — treat as success
+					// Prompt entries are fire-and-forget — don't show success message
 					if (state.config.release.type === "prompt" && state.config.release.content) {
-						ctx.ui.notify("✓ Released successfully", "info");
 						debugLog.log("agent_release", "Release succeeded (prompt)");
 					} else if (result.exitCode !== 0) {
 						const output = result.stderr || result.stdout;

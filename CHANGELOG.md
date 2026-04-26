@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.12](https://github.com/garyjohnson/pi-badger/compare/v0.1.11...v0.1.12) (2026-04-26)
+
+
+* enable showTail by default ([c4deca4](https://github.com/garyjohnson/pi-badger/commit/c4deca4af97a006603da907593e888b65c0db60b))
+* remove script section from README and fix command entry docs ([0c9fdf4](https://github.com/garyjohnson/pi-badger/commit/0c9fdf4b18c7c7fe0d6821379ab713fe073f8f46))
+
 ### [0.1.11](https://github.com/garyjohnson/pi-badger/compare/v0.1.10...v0.1.11) (2026-04-26)
 
 

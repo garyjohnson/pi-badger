@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.31](https://github.com/garyjohnson/pi-badger/compare/v0.1.30...v0.1.31) (2026-04-26)
+
+
+* enforce bun >=1.3.13 minimum version ([5bbe94a](https://github.com/garyjohnson/pi-badger/commit/5bbe94af31a079366d776368a0825f438ddb04dc))
+
 ### [0.1.30](https://github.com/garyjohnson/pi-badger/compare/v0.1.29...v0.1.30) (2026-04-26)
 
 

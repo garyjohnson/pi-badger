@@ -473,51 +473,43 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				state.isRunningRelease = true;
 				const releaseLabel = entryLabel(state.config.release);
 				debugLog.log("agent_release", "Starting release");
-				state.runningLabel = releaseLabel;
-				state.runningStartTime = Date.now();
-				startStatusTimer(state, ctx.ui);
-				ctx.ui.notify(`🦡 Running ${releaseLabel}...`, "info");
 
 				try {
-					// Prompt entries: send the content to the LLM and let it respond
-					if (state.config.release!.type === "prompt" && state.config.release!.content) {
-						debugLog.log("agent_release", "Sending release prompt entry", {
-							contentLength: state.config.release!.content.length,
-							contentPreview: state.config.release!.content.slice(0, 200),
+					// Use shared runner for both prompts and script/command entries
+					const result = await runCheckEntryWithOptionalTail(
+						state.config.release,
+						ctx.cwd,
+						pi,
+						state,
+						debugLog,
+						syncStatus,
+						ctx,
+						"agent_release",
+						{ deliverAs: "steer" },
+					);
+
+					// Prompt entries are fire-and-forget — treat as success
+					if (state.config.release.type === "prompt" && state.config.release.content) {
+						ctx.ui.notify("✓ Released successfully", "info");
+						debugLog.log("agent_release", "Release succeeded (prompt)");
+					} else if (result.exitCode !== 0) {
+						const output = result.stderr || result.stdout;
+						const failurePrompt = state.config.release.failurePrompt || DEFAULT_RELEASE_FAILURE_PROMPT;
+						ctx.ui.notify("✗ Release failed", "error");
+						debugLog.log("agent_release", "Release failed", {
+							exitCode: result.exitCode,
 						});
 						pi.sendMessage(
 							{
-								customType: "badger-release-prompt",
-								content: state.config.release!.content,
+								customType: "badger-release-failure",
+								content: `Badger release failed (${releaseLabel}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
 								display: true,
 							},
-							{ deliverAs: "steer", triggerTurn: true },
+							{ triggerTurn: false },
 						);
-						ctx.ui.notify("Release prompt sent", "info");
-						debugLog.log("agent_release", "Release prompt sent");
 					} else {
-						const result = await runEntry(state.config.release, ctx.cwd, pi);
-						const label = entryLabel(state.config.release);
-
-						if (result.exitCode !== 0) {
-							const output = result.stderr || result.stdout;
-							const failurePrompt = state.config.release.failurePrompt || DEFAULT_RELEASE_FAILURE_PROMPT;
-							ctx.ui.notify("✗ Release failed", "error");
-							debugLog.log("agent_release", "Release failed", {
-								exitCode: result.exitCode,
-							});
-							pi.sendMessage(
-								{
-									customType: "badger-release-failure",
-									content: `Badger release failed (${label}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`,
-									display: true,
-								},
-								{ triggerTurn: false },
-							);
-						} else {
-							ctx.ui.notify("✓ Released successfully", "info");
-							debugLog.log("agent_release", "Release succeeded");
-						}
+						ctx.ui.notify("✓ Released successfully", "info");
+						debugLog.log("agent_release", "Release succeeded");
 					}
 				} finally {
 					state.isRunningRelease = false;

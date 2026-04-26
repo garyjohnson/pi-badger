@@ -28,6 +28,12 @@ function getCommandForEntry(entry: CheckEntry, cwd: string): string | null {
 // Single entry runner
 // ---------------------------------------------------------------------------
 
+/** Extra options for runCheckEntryWithOptionalTail */
+export interface RunEntryOptions {
+	/** Override the deliverAs option for prompt messages (default: "followUp") */
+	deliverAs?: "steer" | "followUp";
+}
+
 /** Run a single check entry, using tail overlay when showTail is enabled and UI is available. */
 export async function runCheckEntryWithOptionalTail(
 	entry: CheckEntry,
@@ -38,6 +44,7 @@ export async function runCheckEntryWithOptionalTail(
 	syncStatusFn: (state: BadgerState, ui: { setStatus: (key: string, value: string | undefined) => void }) => void,
 	ctx: ExtensionContext,
 	category: string,
+	options: RunEntryOptions = {},
 ): Promise<RunResult> {
 	const label = entryLabel(entry);
 
@@ -53,7 +60,7 @@ export async function runCheckEntryWithOptionalTail(
 				content: entry.content,
 				display: true,
 			},
-			{ deliverAs: "followUp", triggerTurn: true },
+			{ deliverAs: options.deliverAs ?? "followUp", triggerTurn: true },
 		);
 		return { exitCode: 0, stdout: "", stderr: "", aborted: false };
 	}

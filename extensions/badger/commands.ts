@@ -22,45 +22,6 @@ const __dirname = path.dirname(url.fileURLToPath(import.meta.url));
 // ---------------------------------------------------------------------------
 
 /** Run a sequence of check entries, collecting failures. */
-/** Run a single release entry, returning result. */
-async function runReleaseEntry(
-	release: CheckEntry,
-	cwd: string,
-	pi: ExtensionAPI,
-	debugLog: DebugLogger,
-	state: BadgerState,
-	syncStatus: (state: BadgerState, ui: { setStatus: (key: string, value: string | undefined) => void }) => void,
-	ui: { setStatus: (key: string, value: string | undefined) => void; notify: (message: string, type: "info" | "warning" | "error") => void },
-): Promise<{ success: boolean; output: string }> {
-	const label = entryLabel(release);
-	state.runningLabel = label;
-	state.runningStartTime = Date.now();
-	startStatusTimer(state, ui);
-	ui.notify(`🦡 Running ${label}...`, "info");
-	let result: RunResult;
-	try {
-		result = await runEntry(release, cwd, pi);
-	} finally {
-		state.runningLabel = null;
-		state.runningStartTime = null;
-		stopStatusTimer(state);
-		syncStatus(state, ui);
-	}
-
-	debugLog.log("release", "Release completed", {
-		type: release.type,
-		label,
-		exitCode: result.exitCode,
-		elapsedMs: result.elapsed,
-	});
-
-	if (result.exitCode !== 0) {
-		const output = result.stderr || result.stdout;
-		return { success: false, output };
-	}
-	return { success: true, output: result.stdout };
-}
-
 // ---------------------------------------------------------------------------
 // Command registration
 // ---------------------------------------------------------------------------
@@ -283,23 +244,29 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 			state.isRunningRelease = true;
 			try {
-				const result = await runReleaseEntry(
+				// Use shared runner for both prompts and script/command entries
+				const result = await runCheckEntryWithOptionalTail(
 					state.config.release,
 					ctx.cwd,
 					pi,
-					log,
 					state,
+					log,
 					syncStatus,
-					ctx.ui,
+					ctx,
+					"manual_release",
+					{ deliverAs: "steer" },
 				);
 
-				if (!result.success) {
+				// Prompt entries are fire-and-forget — treat as success
+				if (state.config.release.type === "prompt" && state.config.release.content) {
+					ctx.ui.notify("✓ Released successfully", "info");
+				} else if (result.exitCode !== 0) {
 					const failurePrompt = state.config.release.failurePrompt || DEFAULT_RELEASE_FAILURE_PROMPT;
 					ctx.ui.notify("✗ Release failed", "error");
 					pi.sendMessage(
 						{
 							customType: "badger-release-failure",
-							content: `Badger release failed (${entryLabel(state.config.release)}):\n\n\`\`\`\n${result.output}\n\`\`\`\n\n${failurePrompt}`,
+							content: `Badger release failed (${entryLabel(state.config.release)}):\n\n\`\`\`\n${result.stderr || result.stdout}\n\`\`\`\n\n${failurePrompt}`,
 							display: true,
 						},
 						{ triggerTurn: false },

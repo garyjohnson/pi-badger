@@ -1,6 +1,6 @@
 {
   "name": "pi-badger",
-  "version": "0.1.25",
+  "version": "0.1.26",
   "description": "Quality gate extension for pi coding agent — runs checks on file changes and enforces test/pass workflow",
   "keywords": [
     "pi-package"

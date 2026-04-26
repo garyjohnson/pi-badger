@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.13](https://github.com/garyjohnson/pi-badger/compare/v0.1.12...v0.1.13) (2026-04-26)
+
+
+* fix Priorities heading in README ([eea67ef](https://github.com/garyjohnson/pi-badger/commit/eea67ef2db1e638f407cf1b513a7346be9113573))
+
 ### [0.1.12](https://github.com/garyjohnson/pi-badger/compare/v0.1.11...v0.1.12) (2026-04-26)
 
 

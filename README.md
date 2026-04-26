@@ -1,6 +1,6 @@
 # pi-badger
 
-![pi-badger header](https://raw.githubusercontent.com/garyjohnson/pi-badger/main/badger-header.jpg)
+![pi-badger header](badger-header.jpg)
 
 ## Your agent thinks it's done. Badger it until it actually is.
 

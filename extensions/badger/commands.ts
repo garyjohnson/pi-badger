@@ -257,9 +257,9 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					{ deliverAs: "steer" },
 				);
 
-				// Prompt entries are fire-and-forget — treat as success
+				// Prompt entries are fire-and-forget — don't show success message
 				if (state.config.release.type === "prompt" && state.config.release.content) {
-					ctx.ui.notify("✓ Released successfully", "info");
+					// No success message for prompts
 				} else if (result.exitCode !== 0) {
 					const failurePrompt = state.config.release.failurePrompt || DEFAULT_RELEASE_FAILURE_PROMPT;
 					ctx.ui.notify("✗ Release failed", "error");

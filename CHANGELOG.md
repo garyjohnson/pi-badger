@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.30](https://github.com/garyjohnson/pi-badger/compare/v0.1.29...v0.1.30) (2026-04-26)
+
+
+* use latest bun without pinning, run tests with --isolate ([ec340c3](https://github.com/garyjohnson/pi-badger/commit/ec340c348f79e378823dccf321192459d566c0bc))
+
 ### [0.1.29](https://github.com/garyjohnson/pi-badger/compare/v0.1.23...v0.1.29) (2026-04-26)
 
 

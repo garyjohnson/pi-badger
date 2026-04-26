@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.33](https://github.com/garyjohnson/pi-badger/compare/v0.1.32...v0.1.33) (2026-04-26)
+
+
+* add branch naming conventions, PR templates, and session stats script ([08e8abf](https://github.com/garyjohnson/pi-badger/commit/08e8abf835fc17993c7a8751ef05d88bc881f30c))
+* consolidate auto-release and /badger:release to use shared runner ([da13290](https://github.com/garyjohnson/pi-badger/commit/da1329021037960d6366a21840d0fee8ec3b7b26))
+* include PR links in session stats output ([310ed8d](https://github.com/garyjohnson/pi-badger/commit/310ed8dcd8e4def881926cd37895ebcffb3e257f))
+* make release script dry-run only, remove version commits ([be4bc7e](https://github.com/garyjohnson/pi-badger/commit/be4bc7e98a4ff0c6c3805bb200f381f4a0c545a9))
+* restore release script and add skip logic for no-op releases ([165f50c](https://github.com/garyjohnson/pi-badger/commit/165f50ccba897c763f2afcd84974c8cf130f3b30))
+* show running time in status bar during checks and release ([41a9b71](https://github.com/garyjohnson/pi-badger/commit/41a9b71b3e16d95cc5e8963f52ab6ef823051914))
+
 ### [0.1.32](https://github.com/garyjohnson/pi-badger/compare/v0.1.31...v0.1.32) (2026-04-26)
 
 

@@ -1,0 +1,32 @@
+{
+  "watchPatterns": ["extensions/**/*.ts", "test/**/*.ts", "skills/**/*.md"],
+  "excludePatterns": ["**/*.lock", "node_modules/**"],
+  "checksFast": [
+    {
+      "type": "script",
+      "path": "scripts/typecheck",
+      "failurePrompt": "Fix the TypeScript errors and continue working."
+    },
+    {
+      "type": "script",
+      "path": "scripts/test_changed",
+      "fileFilter": "test/**/*.ts",
+      "failurePrompt": "Fix the test failures and continue working."
+    }
+  ],
+  "checks": [
+    {
+      "type": "script",
+      "path": "scripts/check",
+      "failurePrompt": "Fix the test failures and continue working."
+    },
+    {
+      "type": "prompt",
+      "content": "Review changes made in this session. If any added behavior lacks test coverage, add test coverage (unit and e2e). If there were any critical security issues introduced to production code, address those issues."
+    }
+  ],
+  "release": {
+    "type": "prompt",
+    "content": "First rebase on latest main, then commit changes. If we're already on a feature branch with an existing PR, update that PR. Otherwise, create a new PR."
+  }
+}

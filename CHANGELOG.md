@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.9](https://github.com/garyjohnson/pi-badger/compare/v0.1.8...v0.1.9) (2026-04-26)
+
+
+* remove stray temp file ([7f5b1ee](https://github.com/garyjohnson/pi-badger/commit/7f5b1ee2435dfdc4ee7aa5c3f1bffe8d13da76ce))
+
 ### [0.1.8](https://github.com/garyjohnson/pi-badger/compare/v0.1.7...v0.1.8) (2026-04-26)
 
 

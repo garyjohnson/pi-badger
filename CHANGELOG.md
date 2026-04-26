@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.11](https://github.com/garyjohnson/pi-badger/compare/v0.1.10...v0.1.11) (2026-04-26)
+
+
+* add tagline to readme ([f3baab1](https://github.com/garyjohnson/pi-badger/commit/f3baab15b1049c6241eb5fbd74873b4bed1633a8))
+
 ### [0.1.10](https://github.com/garyjohnson/pi-badger/compare/v0.1.9...v0.1.10) (2026-04-26)
 
 

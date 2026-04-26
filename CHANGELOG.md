@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.8](https://github.com/garyjohnson/pi-badger/compare/v0.1.7...v0.1.8) (2026-04-26)
+
+
+* use JPG for header image (size efficiency) ([1d97ba4](https://github.com/garyjohnson/pi-badger/commit/1d97ba46d0839127ce7e2b5e5545f3e93b32e12b))
+
 ### [0.1.7](https://github.com/garyjohnson/pi-badger/compare/v0.1.6...v0.1.7) (2026-04-25)
 
 

@@ -4,6 +4,9 @@ import {
 	extractCheckLabel,
 	extractReleaseLabel,
 	countCheckFailures,
+	formatCheckFailure,
+	formatSingleFailureMessage,
+	formatMultiFailureMessage,
 } from "../extensions/badger/renderers.js";
 import { computeStatus } from "../extensions/badger/status.js";
 import type { BadgerState } from "../extensions/badger/types.js";
@@ -18,9 +21,10 @@ describe("computeStatus", () => {
 			config: {
 				watchPatterns: ["src/**/*"],
 				excludePatterns: [],
-				notifyWithoutConfig: true,
 				debug: false,
 				tailLines: 0,
+				showTail: true,
+				fastFail: true,
 				checksFast: [],
 				checks: [],
 				release: null,
@@ -193,7 +197,7 @@ describe("countCheckFailures", () => {
 
 describe("BadgerState", () => {
 	test("state includes enabled field defaulting to true", () => {
-		const state = {
+		const state: BadgerState = {
 			config: null,
 			enabled: true,
 			currentHashMap: new Map(),
@@ -202,8 +206,10 @@ describe("BadgerState", () => {
 			isRunningChecks: false,
 			isRunningRelease: false,
 			runningLabel: null,
+			runningStartTime: null,
 			debugEnabled: false,
-			showTail: false,
+			showTail: true,
+			fastFail: true,
 		};
 
 		expect(state.enabled).toBe(true);
@@ -211,7 +217,7 @@ describe("BadgerState", () => {
 	});
 
 	test("state can be disabled and re-enabled", () => {
-		const state = {
+		const state: BadgerState = {
 			config: null,
 			enabled: true,
 			currentHashMap: new Map(),
@@ -220,8 +226,10 @@ describe("BadgerState", () => {
 			isRunningChecks: false,
 			isRunningRelease: false,
 			runningLabel: null,
+			runningStartTime: null,
 			debugEnabled: false,
-			showTail: false,
+			showTail: true,
+			fastFail: true,
 		};
 
 		state.enabled = false;
@@ -229,5 +237,105 @@ describe("BadgerState", () => {
 
 		state.enabled = true;
 		expect(state.enabled).toBe(true);
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Failure message formatting
+// ---------------------------------------------------------------------------
+
+describe("formatCheckFailure", () => {
+	test("formats a single check failure", () => {
+		const result = formatCheckFailure({
+			label: "scripts/lint",
+			exitCode: 1,
+			output: "2 errors found",
+			failurePrompt: "Fix the lint issues.",
+		});
+		expect(result).toContain("**scripts/lint** failed (exit code 1):");
+		expect(result).toContain("2 errors found");
+		expect(result).toContain("Fix the lint issues.");
+	});
+
+	test("includes code block around output", () => {
+		const result = formatCheckFailure({
+			label: "scripts/check",
+			exitCode: 2,
+			output: "FAIL test/foo.test.ts",
+			failurePrompt: "Fix tests.",
+		});
+		expect(result).toContain("```\nFAIL test/foo.test.ts\n```");
+	});
+});
+
+describe("formatSingleFailureMessage", () => {
+	test("formats a single-failure message (fastFail: true)", () => {
+		const message = formatSingleFailureMessage({
+			label: "scripts/lint",
+			exitCode: 1,
+			output: "Lint error",
+			failurePrompt: "Fix lint.",
+		});
+		expect(message).toBe(
+			"Badger checks failed:\n\n**scripts/lint** failed (exit code 1):\n\n```\nLint error\n```\n\nFix lint.",
+		);
+	});
+
+	test("message is parseable by extractCheckLabel", () => {
+		const message = formatSingleFailureMessage({
+			label: "scripts/typecheck",
+			exitCode: 1,
+			output: "Type error",
+			failurePrompt: "Fix types.",
+		});
+		expect(extractCheckLabel(message)).toBe("scripts/typecheck");
+		expect(countCheckFailures(message)).toBe(1);
+	});
+});
+
+describe("formatMultiFailureMessage", () => {
+		test("formats a multi-failure message (fastFail: false)", () => {
+		const message = formatMultiFailureMessage([
+			{ label: "scripts/lint", exitCode: 1, output: "Lint error", failurePrompt: "Fix lint." },
+			{ label: "scripts/check", exitCode: 2, output: "Test error", failurePrompt: "Fix tests." },
+		]);
+		expect(message).toBe(
+			"Badger checks failed:\n\n**scripts/lint** failed (exit code 1):\n\n```\nLint error\n```\n\nFix lint.\n\n**scripts/check** failed (exit code 2):\n\n```\nTest error\n```\n\nFix tests.",
+		);
+	});
+
+	test("message with two failures is parseable by extractCheckLabel and countCheckFailures", () => {
+		const message = formatMultiFailureMessage([
+			{ label: "scripts/lint", exitCode: 1, output: "E1", failurePrompt: "Fix lint." },
+			{ label: "scripts/check", exitCode: 2, output: "E2", failurePrompt: "Fix tests." },
+		]);
+		expect(extractCheckLabel(message)).toBe("scripts/lint");
+		expect(countCheckFailures(message)).toBe(2);
+	});
+
+	test("message with three failures is parseable", () => {
+		const message = formatMultiFailureMessage([
+			{ label: "lint", exitCode: 1, output: "E1", failurePrompt: "F1" },
+			{ label: "typecheck", exitCode: 2, output: "E2", failurePrompt: "F2" },
+			{ label: "check", exitCode: 3, output: "E3", failurePrompt: "F3" },
+		]);
+		expect(countCheckFailures(message)).toBe(3);
+	});
+
+	test("single-failure array produces same format as formatSingleFailureMessage", () => {
+		const single = formatSingleFailureMessage({
+			label: "scripts/lint",
+			exitCode: 1,
+			output: "Error",
+			failurePrompt: "Fix.",
+		});
+		const multi = formatMultiFailureMessage([
+			{ label: "scripts/lint", exitCode: 1, output: "Error", failurePrompt: "Fix." },
+		]);
+		expect(single).toBe(multi);
+	});
+
+	test("throws on empty array", () => {
+		expect(() => formatMultiFailureMessage([])).toThrow("formatMultiFailureMessage requires at least one failure");
 	});
 });

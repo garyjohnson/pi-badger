@@ -41,6 +41,7 @@ export const DEFAULT_CONFIG: BadgerConfig = {
 	debug: false,
 	tailLines: 0,
 	showTail: true,
+	fastFail: true,
 	checksFast: [
 		{
 			type: "script",
@@ -120,6 +121,7 @@ export function loadConfig(cwd: string): BadgerConfig | null {
 		debug: parsed.debug ?? DEFAULT_CONFIG.debug,
 		tailLines: parsed.tailLines ?? DEFAULT_CONFIG.tailLines,
 		showTail: parsed.showTail ?? DEFAULT_CONFIG.showTail,
+		fastFail: parsed.fastFail ?? DEFAULT_CONFIG.fastFail,
 		checksFast: parsed.checksFast ?? DEFAULT_CONFIG.checksFast,
 		checks: parsed.checks ?? DEFAULT_CONFIG.checks,
 		release: parsed.release === null ? null : (parsed.release ?? DEFAULT_CONFIG.release),

@@ -3,8 +3,12 @@ import { extractCheckLabel, countCheckFailures } from "../extensions/badger/rend
 
 /**
  * Tests for short-circuit behavior in full checks (checks).
- * When a check fails, Badger now short-circuits and reports only the first failure.
- * These tests verify the message format produced by short-circuit behavior.
+ * When fastFail is true (default), Badger short-circuits and reports only the first failure.
+ * When fastFail is false, all failures are collected and reported together.
+ * These tests verify both message formats.
+ *
+ * Config loading tests for fastFail are in config.test.ts.
+ * Formatting function tests for fastFail are in renderers.test.ts.
  */
 
 describe("short-circuit single failure message format", () => {
@@ -93,5 +97,112 @@ Fix.`;
 
 		expect(countCheckFailures(message)).toBe(2);
 		expect(extractCheckLabel(message)).toBe("lint");
+	});
+});
+
+// ---------------------------------------------------------------------------
+// Multi-failure message format (fastFail: false)
+// ---------------------------------------------------------------------------
+
+describe("multi-failure message format (fastFail: false)", () => {
+	test("extractCheckLabel extracts first label from multi-failure message", () => {
+		const message = `Badger checks failed:
+
+**scripts/lint** failed (exit code 1):
+
+\`\`\`
+Lint error
+\`\`\`
+
+Fix lint.
+
+**scripts/check** failed (exit code 2):
+
+\`\`\`
+Test error
+\`\`\`
+
+Fix tests.`;
+
+		expect(extractCheckLabel(message)).toBe("scripts/lint");
+	});
+
+	test("countCheckFailures counts all failures in multi-failure message", () => {
+		const message = `Badger checks failed:
+
+**scripts/lint** failed (exit code 1):
+
+\`\`\`
+Lint error
+\`\`\`
+
+Fix lint.
+
+**scripts/check** failed (exit code 2):
+
+\`\`\`
+Test error
+\`\`\`
+
+Fix tests.`;
+
+		expect(countCheckFailures(message)).toBe(2);
+	});
+
+	test("countCheckFailures counts three failures in multi-failure message", () => {
+		const message = `Badger checks failed:
+
+**lint** failed (exit code 1):
+
+\`\`\`
+E1
+\`\`\`
+
+Fix lint.
+
+**typecheck** failed (exit code 2):
+
+\`\`\`
+E2
+\`\`\`
+
+Fix types.
+
+**check** failed (exit code 3):
+
+\`\`\`
+E3
+\`\`\`
+
+Fix tests.`;
+
+		expect(countCheckFailures(message)).toBe(3);
+	});
+
+	test("renders multiple failures in badge with count", () => {
+		const message = `Badger checks failed:
+
+**scripts/lint** failed (exit code 1):
+
+\`\`\`
+Lint error
+\`\`\`
+
+Fix lint.
+
+**scripts/check** failed (exit code 2):
+
+\`\`\`
+Test error
+\`\`\`
+
+Fix tests.`;
+
+		const label = extractCheckLabel(message);
+		const count = countCheckFailures(message);
+
+		expect(label).toBe("scripts/lint");
+		expect(count).toBe(2);
+		// Renderer shows: "☠ 2 checks failed" when count > 1
 	});
 });

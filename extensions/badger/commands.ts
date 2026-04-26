@@ -8,6 +8,7 @@ import * as url from "node:url";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { BadgerState, CheckEntry } from "./types.js";
 import { loadConfig, saveConfig, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT } from "./config.js";
+import { formatSingleFailureMessage, formatMultiFailureMessage, type CheckFailure } from "./renderers.js";
 import { DebugLogger } from "./debug-logger.js";
 import { buildHashMap, rebuildHashMap, diffHashMaps, diffFilePaths } from "./file-watcher.js";
 import { runEntry, entryLabel } from "./runner.js";
@@ -175,6 +176,8 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 			state.isRunningChecks = true;
 			try {
+				const failures: CheckFailure[] = [];
+
 				for (const entry of state.config.checks) {
 					const result = await runCheckEntryWithOptionalTail(
 						entry, ctx.cwd, pi, state, log, syncStatus, ctx, "manual_check",
@@ -191,23 +194,47 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					if (result.exitCode !== 0) {
 						const output = result.stderr || result.stdout;
 						const failurePrompt = entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
-						const message = `Badger checks failed:\n\n**${entryLabel(entry)}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`;
 						log.log("manual_check", "Check failed", {
 							label: entryLabel(entry),
 							type: entry.type,
 							exitCode: result.exitCode,
 							output: output.slice(0, 1000),
 						});
-						pi.sendMessage(
-							{
-								customType: "badger-check-failure",
-								content: message,
-								display: true,
-							},
-							{ triggerTurn: true },
-						);
-						return; // Short-circuit on first failure
+
+						if (state.fastFail) {
+							const message = formatSingleFailureMessage({ label: entryLabel(entry), exitCode: result.exitCode, output, failurePrompt });
+							pi.sendMessage(
+								{
+									customType: "badger-check-failure",
+									content: message,
+									display: true,
+								},
+								{ triggerTurn: true },
+							);
+							return; // Short-circuit on first failure
+						} else {
+							failures.push({ label: entryLabel(entry), exitCode: result.exitCode, output, failurePrompt });
+							continue;
+						}
 					}
+				}
+
+				// Handle collected failures when fastFail is disabled
+				if (failures.length > 0) {
+					const message = formatMultiFailureMessage(failures);
+					log.log("manual_check", "Multiple checks failed", {
+						failureCount: failures.length,
+						labels: failures.map(f => f.label),
+					});
+					pi.sendMessage(
+						{
+							customType: "badger-check-failure",
+							content: message,
+							display: true,
+						},
+						{ triggerTurn: true },
+					);
+					return;
 				}
 
 				ctx.ui.notify("✓ All checks passed", "info");
@@ -339,6 +366,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 					`  Running checks: ${state.isRunningChecks}`,
 					`  Running release: ${state.isRunningRelease}`,
 					`  Tail overlay: ${state.showTail ? "ON" : "OFF"}`,
+					`  Fast fail: ${state.fastFail ? "ON" : "OFF"}`,
 				];
 
 				// Compute pending changes since last pass

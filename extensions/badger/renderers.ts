@@ -48,6 +48,41 @@ export function countCheckFailures(content: string): number {
 	return matches ? matches.length : 0;
 }
 
+// ---------------------------------------------------------------------------
+// Failure message formatting
+// ---------------------------------------------------------------------------
+
+/** A single check failure entry. */
+export interface CheckFailure {
+	label: string;
+	exitCode: number;
+	output: string;
+	failurePrompt: string;
+}
+
+/** Format a single check failure as a markdown block. */
+export function formatCheckFailure(failure: CheckFailure): string {
+	return `**${failure.label}** failed (exit code ${failure.exitCode}):\n\n\`\`\`\n${failure.output}\n\`\`\`\n\n${failure.failurePrompt}`;
+}
+
+/** Format a single-failure check message (used when fastFail is true). */
+export function formatSingleFailureMessage(failure: CheckFailure): string {
+	return `Badger checks failed:\n\n${formatCheckFailure(failure)}`;
+}
+
+/** Format a multi-failure check message (used when fastFail is false).
+ *  Returns a single-failure message if only one failure is provided,
+ *  or a combined message if multiple are provided.
+ *  Throws if called with an empty array — callers should check first.
+ */
+export function formatMultiFailureMessage(failures: CheckFailure[]): string {
+	if (failures.length === 0) {
+		throw new Error("formatMultiFailureMessage requires at least one failure");
+	}
+	const failureMessages = failures.map(formatCheckFailure).join("\n\n");
+	return `Badger checks failed:\n\n${failureMessages}`;
+}
+
 // `expanded` is toggled by pi's "expand tools" keybinding; collapsed shows just the headline, expanded appends message.content.
 export function registerRenderers(pi: ExtensionAPI): void {
 	pi.registerMessageRenderer("badger-fast-failure", (message, options, theme) => {

@@ -26,8 +26,8 @@ describe("loadConfig", () => {
 		expect(result).not.toBeNull();
 		expect(result!.watchPatterns).toEqual(DEFAULT_CONFIG.watchPatterns);
 		expect(result!.excludePatterns).toEqual(DEFAULT_CONFIG.excludePatterns);
-		expect(result!.notifyWithoutConfig).toBe(DEFAULT_CONFIG.notifyWithoutConfig);
 		expect(result!.debug).toBe(DEFAULT_CONFIG.debug);
+		expect(result!.fastFail).toBe(DEFAULT_CONFIG.fastFail);
 		expect(result!.checksFast).toEqual(DEFAULT_CONFIG.checksFast);
 		expect(result!.checks).toEqual(DEFAULT_CONFIG.checks);
 		expect(result!.release).toEqual(DEFAULT_CONFIG.release);
@@ -44,9 +44,24 @@ describe("loadConfig", () => {
 		expect(result!.debug).toBe(true);
 		// Defaults are preserved for unprovided fields
 		expect(result!.excludePatterns).toEqual(DEFAULT_CONFIG.excludePatterns);
+		expect(result!.fastFail).toBe(DEFAULT_CONFIG.fastFail);
 		expect(result!.checksFast).toEqual(DEFAULT_CONFIG.checksFast);
 		expect(result!.checks).toEqual(DEFAULT_CONFIG.checks);
 		expect(result!.release).toEqual(DEFAULT_CONFIG.release);
+	});
+
+	test("handles fastFail: false as explicitly disabled", () => {
+		writeBadgerConfig(tmp.dir, { fastFail: false });
+		const result = loadConfig(tmp.dir);
+		expect(result).not.toBeNull();
+		expect(result!.fastFail).toBe(false);
+	});
+
+	test("defaults fastFail to true", () => {
+		writeBadgerConfig(tmp.dir, {});
+		const result = loadConfig(tmp.dir);
+		expect(result).not.toBeNull();
+		expect(result!.fastFail).toBe(true);
 	});
 
 	test("handles release: null as explicitly disabled", () => {

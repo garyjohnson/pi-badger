@@ -21,6 +21,7 @@ export interface BadgerConfig {
 	debug: boolean;
 	tailLines: number;
 	showTail: boolean;
+	fastFail: boolean;
 	checksFast: CheckEntry[];
 	checks: CheckEntry[];
 	release?: CheckEntry | null;
@@ -70,4 +71,5 @@ export interface BadgerState {
 	runningStartTime: number | null;
 	debugEnabled: boolean;
 	showTail: boolean;
+	fastFail: boolean;
 }

@@ -18,7 +18,7 @@ import { DebugLogger } from "./debug-logger.js";
 import { rebuildHashMap, diffHashMaps, diffFilePaths, summarizeHashMap } from "./file-watcher.js";
 import { runEntry, entryLabel } from "./runner.js";
 import { registerCommands } from "./commands.js";
-import { registerRenderers } from "./renderers.js";
+import { registerRenderers, formatSingleFailureMessage, formatMultiFailureMessage, type CheckFailure } from "./renderers.js";
 import { computeStatus } from "./status.js";
 import { runCheckEntryWithOptionalTail } from "./check-runner.js";
 
@@ -44,6 +44,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		runningStartTime: null,
 		debugEnabled: false,
 		showTail: false,
+		fastFail: true,
 	};
 
 	let debugLog: DebugLogger = new DebugLogger("", false);
@@ -76,6 +77,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		const debugEnabled = envDebug || state.config.debug;
 		state.debugEnabled = debugEnabled;
 		state.showTail = state.config.showTail;
+		state.fastFail = state.config.fastFail;
 		debugLog = new DebugLogger(ctx.cwd, debugEnabled);
 
 		debugLog.log("session_start", "Session starting", {
@@ -376,6 +378,8 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				})),
 			});
 
+			const failures: CheckFailure[] = [];
+
 			for (const entry of state.config.checks) {
 				const label = entryLabel(entry);
 
@@ -409,23 +413,48 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				if (result.exitCode !== 0) {
 					const output = result.stderr || result.stdout;
 					const failurePrompt = entry.failurePrompt || DEFAULT_CHECKS_FAILURE_PROMPT;
-					const message = `Badger checks failed:\n\n**${label}** failed (exit code ${result.exitCode}):\n\n\`\`\`\n${output}\n\`\`\`\n\n${failurePrompt}`;
+
 					debugLog.log("agent_check", "Check failed", {
 						label,
 						type: entry.type,
 						exitCode: result.exitCode,
 						output: output.slice(0, 1000),
 					});
-					pi.sendMessage(
-						{
-							customType: "badger-check-failure",
-							content: message,
-							display: true,
-						},
-						{ deliverAs: "steer", triggerTurn: true },
-					);
-					return; // Short-circuit on first failure
+
+					if (state.fastFail) {
+						const message = formatSingleFailureMessage({ label, exitCode: result.exitCode, output, failurePrompt });
+						pi.sendMessage(
+							{
+								customType: "badger-check-failure",
+								content: message,
+								display: true,
+							},
+							{ deliverAs: "steer", triggerTurn: true },
+						);
+						return; // Short-circuit on first failure
+					} else {
+						failures.push({ label, exitCode: result.exitCode, output, failurePrompt });
+						continue;
+					}
 				}
+			}
+
+			// Handle collected failures when fastFail is disabled
+			if (failures.length > 0) {
+				const message = formatMultiFailureMessage(failures);
+				debugLog.log("agent_check", "Multiple checks failed", {
+					failureCount: failures.length,
+					labels: failures.map(f => f.label),
+				});
+				pi.sendMessage(
+					{
+						customType: "badger-check-failure",
+						content: message,
+						display: true,
+					},
+					{ deliverAs: "steer", triggerTurn: true },
+				);
+				return;
 			}
 
 			debugLog.log("agent_check", "All checks passed", {

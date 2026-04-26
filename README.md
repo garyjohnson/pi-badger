@@ -57,7 +57,6 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 {
   "watchPatterns": ["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"],
   "excludePatterns": ["**/*.lock"],
-  "notifyWithoutConfig": true,
   "debug": false,
   "checksFast": [
     {
@@ -98,10 +97,11 @@ Badger reads configuration from `.pi/badger.json` in your project root:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `watchPatterns` | `string[]` | `["src/**/*", "test/**/*", "lib/**/*", "pkg/**/*"]` | Glob patterns for files to watch (must include test dirs) |
-| `excludePatterns` | `string[]` | `[]` | Glob patterns to exclude — keep minimal (only lock/gen files) |
-| `notifyWithoutConfig` | `boolean` | `true` | Show setup notification when no config found |
+| `excludePatterns` | `string[]` | `[]` | Glob patterns to exclude — keep minimal. Defaults include `**/node_modules`, `**/dist`, `**/.git`, etc. |
 | `debug` | `boolean` | `false` | Enable debug mode — log detailed info to `.pi/badger-debug.log` |
-| `checksFast` | `FastCheckEntry[]` | lint, typecheck, test_changed | Fast per-file checks (script or command). Short-circuits on first failure. |
+| `tailLines` | `number` | `0` | Limit the output lines shown in error prompts when a check fails. `0` = full output. |
+| `showTail` | `boolean` | `false` | In TUI mode, show live tail of the running check. |
+| `checksFast` | `FastCheckEntry[]` | lint, typecheck, test_changed | Fast per-file checks (script, command, or prompt). Short-circuits on first failure. |
 | `checks` | `CheckEntry[]` | (see defaults) | Full test suite (script, command, or prompt) |
 | `release` | `CheckEntry \| null` | (see defaults) | Release step (script, command, or prompt), omit to disable |
 
@@ -129,7 +129,7 @@ Or with inline command:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `type` | `"script" \| "command"` | Yes | Entry type. `"script"` runs an executable file, `"command"` runs a shell command string. |
+| `type` | `"script" \| "command" \| "prompt"` | Yes | Entry type. `"script"` runs an executable file, `"command"` runs a shell command string, `"prompt"` sends instructions to pi. |
 | `path` | `string` | Yes (if `type` is `"script"`) | Path to the check script |
 | `command` | `string` | Yes (if `type` is `"command"`) | Shell command to run. Use `$CHANGED_FILES` to insert changed file paths. |
 | `fileFilter` | `string[]` | No | Glob patterns. Only changed files matching these patterns are passed to the script/command. If no files match, the entry is skipped entirely. Omit to receive all changed files. |

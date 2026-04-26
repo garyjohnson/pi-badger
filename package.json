@@ -29,8 +29,7 @@
   "scripts": {
     "test": "bun test --isolate",
     "check": "bun test --isolate",
-    "release": "standard-version",
-    "release:dry": "standard-version --dry-run"
+    "release": "standard-version --dry-run"
   },
   "engines": {
     "bun": ">=1.3.13"

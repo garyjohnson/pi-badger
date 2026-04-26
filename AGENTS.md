@@ -14,8 +14,8 @@
 | Install dependencies | `bun install` |
 | Run tests | `bun test --isolate` |
 | Type check | `bunx tsc --noEmit` |
-| Dry run release | `bun run release:dry` |
-| Release | `bun run release` |
+| Dry run release | `bun run release` |
+| Release (create PR) | See Git Workflow below |
 | Session stats (all) | `bun scripts/session-stats.ts` |
 | Session stats (latest) | `bun scripts/session-stats.ts --latest` |
 
@@ -158,8 +158,10 @@ gh pr create --title "chore: release v$(node -p "require('./package.json').versi
 To preview what version bump and changelog will happen:
 
 ```bash
-bun run release:dry
+bun run release
 ```
+
+This runs `standard-version --dry-run` (no commits, no tags). The actual release happens automatically when PRs merge to `main` — see the Git Workflow section.
 
 ### Installation by version
 

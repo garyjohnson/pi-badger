@@ -38,3 +38,24 @@ jobs:
         run: |
           git push
           git push --tags
+
+      - name: Extract release notes from CHANGELOG
+        id: release-notes
+        run: |
+          TAG=$(git describe --tags --abbrev=0)
+          VERSION=${TAG#v}
+          # Extract the section for this version from CHANGELOG.md
+          NOTES=$(awk "/^### \\[${VERSION}\\]/{found=1; next} /^### \\[/{if(found) exit} found{print}" CHANGELOG.md)
+          # Write to file for multiline GITHUB_OUTPUT
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "notes<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$NOTES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release-notes.outputs.tag }}
+          body: ${{ steps.release-notes.outputs.notes }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

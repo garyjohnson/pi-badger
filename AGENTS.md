@@ -3,7 +3,7 @@
 ## Runtime & Tooling
 
 - **Package manager**: Use `bun` for all package operations (`bun install`, `bun add`, etc.)
-- **Test runner**: Use `bun test` — not vitest, jest, or npm test
+- **Test runner**: Use `bun test --isolate` — not vitest, jest, or npm test
 - **Script runner**: Use `bun run <script>` — not `npm run <script>`
 - **Type checking**: Use `bunx tsc --noEmit` to check for TypeScript errors
 
@@ -12,7 +12,7 @@
 | Task | Command |
 |------|---------|
 | Install dependencies | `bun install` |
-| Run tests | `bun test` |
+| Run tests | `bun test --isolate` |
 | Type check | `bunx tsc --noEmit` |
 | Dry run release | `bun run release:dry` |
 | Release | `bun run release` |

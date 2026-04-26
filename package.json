@@ -27,8 +27,8 @@
     "typescript": "^6.0.3"
   },
   "scripts": {
-    "test": "bun test",
-    "check": "bun test",
+    "test": "bun test --isolate",
+    "check": "bun test --isolate",
     "release": "standard-version",
     "release:dry": "standard-version --dry-run"
   },

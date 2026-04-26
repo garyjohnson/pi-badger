@@ -195,7 +195,7 @@ Runs a shell command directly via `sh -c`. No script file needed. Use `$CHANGED_
 ```json
 {
   "type": "command",
-  "command": "npx tsc --noEmit && bun test",
+  "command": "npx tsc --noEmit && bun test --isolate",
   "failurePrompt": "Fix the failures and continue working."
 }
 ```

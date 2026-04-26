@@ -1,20 +1,31 @@
-![pi-badger header](https://raw.githubusercontent.com/garyjohnson/pi-badger/main/badger-header.jpg)
-
 # pi-badger
 
-> Your agent thinks it's done. Badger it until it actually is.
+![pi-badger header](https://raw.githubusercontent.com/garyjohnson/pi-badger/main/badger-header.jpg)
+
+## Your agent thinks it's done. Badger it until it actually is.
 
 A quality gate extension for the [pi coding agent](https://github.com/badlogic/pi-mono). Badger automatically runs checks when files change and enforces a test-pass-release workflow.
+
+Priorities:
+
+### HITL / HOTL over HOOTL
+Generally this is a tool targeting human-in-the-loop and human-on-the-loop workflows. It's not meant to be a bullet-proof unattended quality gate.
+
+### Simplicity over strictness
+Running layers of adversarial subagents against each other can cause infinite loops and token-burning. Badger is focused on running deterministic commands and sending prompts back to the agent as suggestions. The agent might ignore or get around those checks, and that's an acceptable tradeoff for simplicity and token efficiency.
+
+### Visibility over magic
+Badger surfaces what it's doing to the user. Running checks are displayed in the status bar, and the tail of any commands are shown to the user so they can understand what is steering the agent.
 
 ## How It Works
 
 Badger operates in three stages:
 
-1. **Fast checks (`checksFast`)** — Run automatically at the end of each turn when watched files change. Typically configured as separate entries for lint, typecheck, and per-file tests. Each entry can use `fileFilter` to route only matching changed files to that script. Entries without `fileFilter` receive all changed files. Short-circuits on first failure. Failures are injected back to pi as steering messages — pi keeps working and fixes issues.
+1. **Fast checks (`checksFast`)** — Quick per-file checks that run automatically at the end of each turn when watched files change. Failures are injected back to pi as steering messages — pi keeps working and fixes issues. Running fast checks are automatically cancelled if those files continue to change.
 
-2. **Full checks (`checks`)** — Run automatically at `agent_end` when watched files have changed since the last successful check. Runs the complete test suite. If checks fail, pi is told to fix the failures and keeps working. Loops until all checks pass.
+2. **Full checks (`checks`)** — Run automatically at `agent_end` when watched files have changed since the last successful check. For running your complete lint, type checking, tests, what-have-you. If checks fail, pi is told to fix the failures and keeps working. Loops until all checks pass.
 
-3. **Release** — Runs automatically after full checks pass. If the release fails, only the user is notified (pi doesn't try to fix release failures).
+3. **Release** — A command or prompt that runs automatically after full checks pass. For submitting PRs, running builds, or any other steps. If the release fails, only the user is notified (pi doesn't try to fix release failures).
 
 ```
 File changes detected → checksFast (per turn, async, fileFilter routes files)
@@ -143,40 +154,29 @@ Or with inline command:
 
 **Script entry:**
 
-Runs an executable script file. Changed files are passed as command-line arguments.
+Runs an executable script at `path`. Changed files are passed as command-line arguments.
 
 ```json
 {
   "type": "script",
-  "path": "scripts/check",
-  "failurePrompt": "Fix the failures and continue."
+  "path": "scripts/lint",
+  "fileFilter": ["*.ts", "*.tsx"],
+  "failurePrompt": "Fix the lint issues identified above and continue working."
 }
 ```
 
 **Command entry:**
 
-Runs a shell command directly via `sh -c`. No script file needed. Use `$CHANGED_FILES` in `checksFast` entries to insert changed file paths — it's replaced with a space-separated list of quoted paths. If `$CHANGED_FILES` is not present, changed files are appended to the end of the command.
-
-```json
-{
-  "type": "command",
-  "command": "bun test",
-  "failurePrompt": "Fix the test failures and continue working."
-}
-```
-
-With file filter:
+Runs a shell command directly via `sh -c`. No script file needed. Use `$CHANGED_FILES` in `checksFast` entries to insert changed file paths — it's replaced with a space-separated list of quoted paths. If `$CHANGED_FILES` is not present, the command runs as-is without any file arguments.
 
 ```json
 {
   "type": "command",
   "command": "npx eslint $CHANGED_FILES",
   "fileFilter": ["*.ts", "*.tsx"],
-  "failurePrompt": "Fix the lint issues and continue working."
+  "failurePrompt": "Fix the lint issues identified above and continue working."
 }
 ```
-
-Shell features like pipes, `&&`, and redirects work:
 
 ```json
 {
@@ -187,6 +187,8 @@ Shell features like pipes, `&&`, and redirects work:
 ```
 
 **Prompt entry:**
+
+Sends a prompt to pi. No command or script is run.
 
 ```json
 {
@@ -293,67 +295,7 @@ When debug mode is active, a `🐛 Debug ON` status indicator appears in the TUI
 | `/badger:check` | Manually trigger full checks |
 | `/badger:release` | Manually trigger the release step |
 | `/badger:debug` | Toggle debug mode, view log, show status |
-
-## Scripts
-
-### `scripts/lint`
-
-Receives only files matching `fileFilter` (e.g., `*.ts`, `*.tsx`). Run the linter directly on the arguments:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-CHANGED_FILES=("$@")
-[ ${#CHANGED_FILES[@]} -eq 0 ] && exit 0
-npx eslint "${CHANGED_FILES[@]}"
-```
-
-### `scripts/typecheck`
-
-No `fileFilter` — runs on any change. Most type checkers check the whole project regardless of which files changed:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-npx tsc --noEmit
-```
-
-### `scripts/test_changed`
-
-Receives only files matching `fileFilter` (e.g., `*.test.ts`, `*.spec.ts`). Run the test runner on those files:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-CHANGED_FILES=("$@")
-[ ${#CHANGED_FILES[@]} -eq 0 ] && exit 0
-npx vitest run "${CHANGED_FILES[@]}"
-```
-
-Note: fast checks only receive files that changed. If a source file changes but its test file didn't, the fast test won't catch that — the full `checks` suite at `agent_end` covers it.
-
-### `scripts/check`
-
-No arguments. Runs the full test suite.
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-npx vitest run
-```
-
-### `scripts/release`
-
-No arguments. Runs release steps.
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-npm run build
-npm publish
-```
-
-Release failures are reported to the user only — pi does not attempt to fix them.
+| `/badger:tail` | Toggle live tail overlay for full checks |
 
 ## Behavior Details
 

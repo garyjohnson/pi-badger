@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.35](https://github.com/garyjohnson/pi-badger/compare/v0.1.34...v0.1.35) (2026-04-27)
+
+
+* expand tabs and strip control chars in TailOverlay to prevent TUI crash ([5c63714](https://github.com/garyjohnson/pi-badger/commit/5c63714289c77b6fdc0b62c540b94e48dc0adfc8))
+
 ### [0.1.34](https://github.com/garyjohnson/pi-badger/compare/v0.1.33...v0.1.34) (2026-04-26)
 
 

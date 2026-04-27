@@ -39,7 +39,9 @@ export class TailOverlay implements Component {
 	/** Add a line of output. */
 	addOutput(line: string): void {
 		// Strip ANSI control sequences that would break the overlay box
-		const cleaned = stripAnsi(line);
+		// and replace tabs with spaces (tabs expand to variable widths in
+		// terminals, breaking visibleWidth/truncateToWidth calculations)
+		const cleaned = stripAnsi(line).replace(/\t/g, "    ");
 		this.lines.push(cleaned);
 		// Keep only the last `maxVisibleLines * 3` lines to bound memory
 		const bufferMax = this.maxVisibleLines * 3;
@@ -291,11 +293,20 @@ export function runWithTailOverlay(
 // ANSI stripping utility
 // ---------------------------------------------------------------------------
 
-/** Strip common ANSI escape sequences from a string. */
+/** Strip common ANSI escape sequences from a string and sanitize control characters.
+ *  - All C0 control characters except TAB (\x09) and LF (\x0a) are removed.
+ *    This includes null, backspace, carriage return, standalone ESC, and
+ *    other control chars that could corrupt terminal rendering.
+ *  - DEL (\x7f) is also removed.
+ *  - Tabs should be expanded separately via .replace(/\t/g, "    ")
+ *    before rendering, since they expand to variable widths in terminals,
+ *    breaking visibleWidth/truncateToWidth calculations.
+ */
 export function stripAnsi(str: string): string {
 	// eslint-disable-next-line no-control-regex
 	return str.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "")
 		.replace(/\x1b\][^\x07]*\x07/g, "") // OSC sequences terminated by BEL
 		.replace(/\x1b\][^\x1b]*\x1b\\/g, "") // OSC sequences terminated by ST (ESC \)
-		.replace(/\x1b\[[0-9;]*m/g, ""); // SGR sequences (colors)
+		.replace(/\x1b\[[0-9;]*m/g, "") // SGR sequences (colors)
+		.replace(/[\x00-\x08\x0b-\x1f\x7f]/g, ""); // Remove all C0 controls except TAB/LF, plus DEL
 }

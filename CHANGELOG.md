@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.36](https://github.com/garyjohnson/pi-badger/compare/v0.1.35...v0.1.36) (2026-04-28)
+
+
+* walk up directory tree to find badger.json config and use config dir for file/exec operations ([eb2de41](https://github.com/garyjohnson/pi-badger/commit/eb2de41e250a82cd6f324864edd67fed8cab6f34))
+
 ### [0.1.35](https://github.com/garyjohnson/pi-badger/compare/v0.1.34...v0.1.35) (2026-04-27)
 
 

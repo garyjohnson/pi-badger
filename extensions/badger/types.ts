@@ -61,6 +61,7 @@ export interface RunResult {
 
 export interface BadgerState {
 	config: BadgerConfig | null;
+	configDir: string | null;
 	enabled: boolean;
 	currentHashMap: Map<string, FileHash>;
 	lastRunHashMap: Map<string, FileHash>;

@@ -95,11 +95,35 @@ export const SYSTEM_PROMPT = `You are working with the Badger quality gate exten
 // ---------------------------------------------------------------------------
 
 /**
+ * Walk up from startDir looking for .pi/badger.json.
+ * Returns the directory containing it, or null if not found.
+ */
+export function findConfigDir(startDir: string): string | null {
+	let current = path.resolve(startDir);
+	while (true) {
+		const configPath = path.join(current, ".pi", "badger.json");
+		if (fs.existsSync(configPath)) {
+			return current;
+		}
+		const parent = path.dirname(current);
+		if (parent === current) {
+			break;
+		}
+		current = parent;
+	}
+	return null;
+}
+
+/**
  * Load and merge badger.json with defaults.
  * Returns null if no config file exists or it's unreadable/invalid.
  */
 export function loadConfig(cwd: string): BadgerConfig | null {
-	const configPath = path.join(cwd, ".pi", "badger.json");
+	const configDir = findConfigDir(cwd);
+	if (!configDir) {
+		return null;
+	}
+	const configPath = path.join(configDir, ".pi", "badger.json");
 	let raw: string;
 	try {
 		raw = fs.readFileSync(configPath, "utf-8");
@@ -132,7 +156,8 @@ export function loadConfig(cwd: string): BadgerConfig | null {
  * Save a BadgerConfig to .pi/badger.json in the given cwd.
  */
 export function saveConfig(cwd: string, config: BadgerConfig): void {
-	const configPath = path.join(cwd, ".pi", "badger.json");
+	const configDir = findConfigDir(cwd) ?? cwd;
+	const configPath = path.join(configDir, ".pi", "badger.json");
 	const dir = path.dirname(configPath);
 
 	try {

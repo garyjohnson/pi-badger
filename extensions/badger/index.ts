@@ -13,7 +13,7 @@
 import picomatch from "picomatch";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { BadgerState } from "./types.js";
-import { loadConfig, SYSTEM_PROMPT, DEFAULT_FAST_FAILURE_PROMPT, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT, DEFAULT_CONFIG } from "./config.js";
+import { loadConfig, findConfigDir, SYSTEM_PROMPT, DEFAULT_FAST_FAILURE_PROMPT, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT, DEFAULT_CONFIG } from "./config.js";
 import { DebugLogger } from "./debug-logger.js";
 import { rebuildHashMap, diffHashMaps, diffFilePaths, summarizeHashMap } from "./file-watcher.js";
 import { runEntry, entryLabel } from "./runner.js";
@@ -34,6 +34,7 @@ function syncStatus(state: BadgerState, ui: { setStatus: (key: string, value: st
 export default function badgerExtension(pi: ExtensionAPI) {
 	const state: BadgerState = {
 		config: null,
+		configDir: null,
 		enabled: true,
 		currentHashMap: new Map(),
 		lastRunHashMap: new Map(),
@@ -58,6 +59,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	// Session start — load config, build initial hash map
 	// -----------------------------------------------------------------------
 	pi.on("session_start", async (_event, ctx) => {
+		state.configDir = findConfigDir(ctx.cwd);
 		state.config = loadConfig(ctx.cwd);
 
 		// Check env var override
@@ -65,7 +67,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 		if (!state.config) {
 			debugLog = new DebugLogger(ctx.cwd, envDebug);
-			debugLog.log("config", "No badger.json found", { cwd: ctx.cwd, envDebug });
+			debugLog.log("config", "No badger.json found", { cwd: ctx.cwd, configDir: state.configDir, envDebug });
 
 			ctx.ui.notify(
 				"Badger is installed but not configured. Run /badger:setup to get started.",
@@ -79,10 +81,10 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		state.debugEnabled = debugEnabled;
 		state.showTail = state.config.showTail;
 		state.fastFail = state.config.fastFail;
-		debugLog = new DebugLogger(ctx.cwd, debugEnabled);
+		debugLog = new DebugLogger(state.configDir ?? ctx.cwd, debugEnabled);
 
 		debugLog.log("session_start", "Session starting", {
-			cwd: ctx.cwd,
+			cwd: ctx.cwd, configDir: state.configDir,
 			debug: debugEnabled,
 			envDebug,
 			configDebug: state.config.debug,
@@ -95,7 +97,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 		// Build initial hash map of watched files
 		state.currentHashMap = rebuildHashMap(
-			ctx.cwd,
+			state.configDir ?? ctx.cwd,
 			state.config.watchPatterns,
 			state.config.excludePatterns,
 			new Map(), // empty old map → full scan
@@ -152,7 +154,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		// Rebuild hash map efficiently (only re-hash changed files)
 		const previousHashMap = state.currentHashMap;
 		const newHashMap = rebuildHashMap(
-			ctx.cwd,
+			state.configDir ?? ctx.cwd,
 			state.config.watchPatterns,
 			state.config.excludePatterns,
 			previousHashMap,
@@ -201,7 +203,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 		// Capture values for the async closure (state may change after handler returns)
 		const currentConfig = state.config;
 		const filesToCheck = [...changedFiles];
-		const cwd = ctx.cwd;
+		const cwd = state.configDir ?? ctx.cwd;
 
 		debugLog.log("turn_end", "Starting fast checks", {
 			filesToCheck,
@@ -329,7 +331,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 
 		// Rebuild hash map and check if files changed since last pass
 		const newHashMap = rebuildHashMap(
-			ctx.cwd,
+			state.configDir ?? ctx.cwd,
 			state.config.watchPatterns,
 			state.config.excludePatterns,
 			state.currentHashMap,
@@ -406,7 +408,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 				}
 
 				const result = await runCheckEntryWithOptionalTail(
-					entry, ctx.cwd, pi, state, debugLog, syncStatus, ctx, "agent_check",
+					entry, state.configDir ?? ctx.cwd, pi, state, debugLog, syncStatus, ctx, "agent_check",
 				);
 
 				// If user dismissed overlay, skip this entry
@@ -478,7 +480,7 @@ export default function badgerExtension(pi: ExtensionAPI) {
 					// Use shared runner for both prompts and script/command entries
 					const result = await runCheckEntryWithOptionalTail(
 						state.config.release,
-						ctx.cwd,
+						state.configDir ?? ctx.cwd,
 						pi,
 						state,
 						debugLog,

@@ -81,7 +81,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			state.enabled = true;
 			// Rebuild hash maps to current state so we don't trigger stale checks
 			state.currentHashMap = buildHashMap(
-				ctx.cwd,
+				state.configDir ?? ctx.cwd,
 				state.config.watchPatterns,
 				state.config.excludePatterns,
 			);
@@ -149,7 +149,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 				for (const entry of state.config.checks) {
 					const result = await runCheckEntryWithOptionalTail(
-						entry, ctx.cwd, pi, state, log, syncStatus, ctx, "manual_check",
+						entry, state.configDir ?? ctx.cwd, pi, state, log, syncStatus, ctx, "manual_check",
 					);
 
 					// If user dismissed overlay, skip this entry
@@ -210,7 +210,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				log.log("manual_check", "All checks passed");
 
 				state.lastRunHashMap = buildHashMap(
-					ctx.cwd,
+					state.configDir ?? ctx.cwd,
 					state.config.watchPatterns,
 					state.config.excludePatterns,
 				);
@@ -247,7 +247,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				// Use shared runner for both prompts and script/command entries
 				const result = await runCheckEntryWithOptionalTail(
 					state.config.release,
-					ctx.cwd,
+					state.configDir ?? ctx.cwd,
 					pi,
 					state,
 					log,
@@ -299,7 +299,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			const log = debugLog();
 
 			if (subcommand === "off") {
-				log.setEnabled(false, ctx.cwd);
+				log.setEnabled(false, state.configDir ?? ctx.cwd);
 				state.config.debug = false;
 				state.debugEnabled = false;
 				saveConfig(ctx.cwd, state.config);
@@ -366,7 +366,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 
 			// Default: toggle on
 			if (!log.isEnabled) {
-				log.setEnabled(true, ctx.cwd);
+				log.setEnabled(true, state.configDir ?? ctx.cwd);
 				state.config.debug = true;
 				state.debugEnabled = true;
 				saveConfig(ctx.cwd, state.config);
@@ -374,7 +374,7 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 				log.log("debug", "Debug mode enabled via /badger:debug command");
 				ctx.ui.notify("🐛 Badger debug mode ON — logging to .pi/badger-debug.log", "info");
 			} else {
-				log.setEnabled(false, ctx.cwd);
+				log.setEnabled(false, state.configDir ?? ctx.cwd);
 				state.config.debug = false;
 				state.debugEnabled = false;
 				saveConfig(ctx.cwd, state.config);

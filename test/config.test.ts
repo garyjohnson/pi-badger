@@ -1,7 +1,7 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { loadConfig, DEFAULT_CONFIG } from "../extensions/badger/config.js";
+import { loadConfig, saveConfig, findConfigDir, DEFAULT_CONFIG } from "../extensions/badger/config.js";
 import { createTempDir, writeBadgerConfig } from "./helpers.js";
 
 describe("loadConfig", () => {
@@ -116,5 +116,95 @@ describe("loadConfig", () => {
 		expect(result).not.toBeNull();
 		expect(result!.checksFast).toEqual(customChecksFast);
 		expect(result!.checks).toEqual(customChecks);
+	});
+	test("finds config in parent directory when called from subdirectory", () => {
+		writeBadgerConfig(tmp.dir, { debug: true });
+		const subDir = path.join(tmp.dir, "src", "components");
+		fs.mkdirSync(subDir, { recursive: true });
+		const result = loadConfig(subDir);
+		expect(result).not.toBeNull();
+		expect(result!.debug).toBe(true);
+	});
+	test("returns null when no config exists in current or parent directories", () => {
+		const subDir = path.join(tmp.dir, "src", "components");
+		fs.mkdirSync(subDir, { recursive: true });
+		const result = loadConfig(subDir);
+		expect(result).toBeNull();
+	});
+});
+
+describe("findConfigDir", () => {
+	let tmp: { dir: string; cleanup: () => void };
+
+	beforeEach(() => {
+		tmp = createTempDir();
+	});
+
+	afterEach(() => {
+		tmp.cleanup();
+	});
+
+	test("returns cwd when config exists directly", () => {
+		writeBadgerConfig(tmp.dir, {});
+		const result = findConfigDir(tmp.dir);
+		expect(result).toBe(tmp.dir);
+	});
+
+	test("returns parent dir when config exists in parent", () => {
+		writeBadgerConfig(tmp.dir, {});
+		const subDir = path.join(tmp.dir, "subdir");
+		fs.mkdirSync(subDir, { recursive: true });
+		const result = findConfigDir(subDir);
+		expect(result).toBe(tmp.dir);
+	});
+
+	test("walks up multiple levels", () => {
+		writeBadgerConfig(tmp.dir, {});
+		const deepDir = path.join(tmp.dir, "a", "b", "c");
+		fs.mkdirSync(deepDir, { recursive: true });
+		const result = findConfigDir(deepDir);
+		expect(result).toBe(tmp.dir);
+	});
+
+	test("returns null when no config exists", () => {
+		const result = findConfigDir(tmp.dir);
+		expect(result).toBeNull();
+	});
+
+	test("returns null for non-existent directory", () => {
+		const result = findConfigDir("/nonexistent/path/that/does/not/exist");
+		expect(result).toBeNull();
+	});
+});
+
+describe("saveConfig", () => {
+	let tmp: { dir: string; cleanup: () => void };
+
+	beforeEach(() => {
+		tmp = createTempDir();
+	});
+
+	afterEach(() => {
+		tmp.cleanup();
+	});
+
+	test("saves config to cwd when no existing config", () => {
+		const config = { ...DEFAULT_CONFIG, debug: true };
+		saveConfig(tmp.dir, config);
+		const configPath = path.join(tmp.dir, ".pi", "badger.json");
+		expect(fs.existsSync(configPath)).toBe(true);
+		const saved = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+		expect(saved.debug).toBe(true);
+	});
+
+	test("updates config in parent directory when called from subdirectory", () => {
+		writeBadgerConfig(tmp.dir, { debug: false });
+		const subDir = path.join(tmp.dir, "src");
+		fs.mkdirSync(subDir, { recursive: true });
+		const config = { ...DEFAULT_CONFIG, debug: true };
+		saveConfig(subDir, config);
+		const configPath = path.join(tmp.dir, ".pi", "badger.json");
+		const saved = JSON.parse(fs.readFileSync(configPath, "utf-8"));
+		expect(saved.debug).toBe(true);
 	});
 });

@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.38](https://github.com/garyjohnson/pi-badger/compare/v0.1.37...v0.1.38) (2026-05-24)
+
+
+* update deprecated @mariozechner/* packages to @earendil-works/* ([03be4eb](https://github.com/garyjohnson/pi-badger/commit/03be4eb9510577df62fec266bc403e2ab7b970e1))
+
 ### [0.1.37](https://github.com/garyjohnson/pi-badger/compare/v0.1.36...v0.1.37) (2026-05-24)
 
 

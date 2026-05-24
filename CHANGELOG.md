@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+### [0.1.37](https://github.com/garyjohnson/pi-badger/compare/v0.1.36...v0.1.37) (2026-05-24)
+
+
+* no default checks/fast checks/release steps unless configured ([9967eba](https://github.com/garyjohnson/pi-badger/commit/9967eba172cbe481cde834ae788cd73a27410d43))
+* remove dead code, guard empty checks in /badger:check, add buildSystemPrompt edge case tests ([9bd79d3](https://github.com/garyjohnson/pi-badger/commit/9bd79d3cb5bfb21194a20682e599cf9a93e238bb))
+
 ### [0.1.36](https://github.com/garyjohnson/pi-badger/compare/v0.1.35...v0.1.36) (2026-04-28)
 
 

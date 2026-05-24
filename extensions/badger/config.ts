@@ -54,19 +54,6 @@ export const DEFAULT_CHECKS_FAILURE_PROMPT =
 export const DEFAULT_RELEASE_FAILURE_PROMPT =
 	"The release failed. Review the errors above.";
 
-/** Default watch/exclude patterns for new configs (without checks). */
-export const DEFAULT_WATCH_EXCLUDE_CONFIG: Partial<BadgerConfig> = {
-	watchPatterns: DEFAULT_CONFIG.watchPatterns,
-	excludePatterns: DEFAULT_CONFIG.excludePatterns,
-	debug: false,
-	tailLines: 0,
-	showTail: true,
-	fastFail: true,
-	checksFast: [],
-	checks: [],
-	release: null,
-};
-
 /**
  * Build a Badger system prompt tailored to what the config has enabled.
  */

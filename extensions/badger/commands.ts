@@ -143,6 +143,12 @@ checksFast entries target specific concerns (lint, typecheck, per-file tests) an
 			const log = debugLog();
 			log.log("manual_check", "Manually triggered full checks");
 
+			if (state.config.checks.length === 0) {
+				ctx.ui.notify("No checks configured. Add entries to `checks` in .pi/badger.json", "warning");
+				log.log("manual_check", "No checks configured, nothing to run");
+				return;
+			}
+
 			state.isRunningChecks = true;
 			try {
 				const failures: CheckFailure[] = [];

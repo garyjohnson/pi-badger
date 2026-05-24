@@ -228,6 +228,48 @@ describe("buildSystemPrompt", () => {
 		const prompt = buildSystemPrompt(config);
 		expect(prompt).toStartWith("You are working with the Badger quality gate extension");
 	});
+
+	test("omits release-specific steps when only release is configured", () => {
+		const config = makeConfig({
+			checksFast: [],
+			checks: [],
+			release: { type: "command", command: "publish" },
+		});
+		const prompt = buildSystemPrompt(config);
+		// No fast checks or checks, so it falls to the minimal 2-step workflow
+		expect(prompt).not.toContain("fast check failure");
+		expect(prompt).not.toContain("check failure");
+		expect(prompt).not.toContain("test or release scripts");
+		expect(prompt).toContain("2. Keep working");
+	});
+
+	test("includes both fast and regular check steps when both arrays are populated", () => {
+		const config = makeConfig({
+			checksFast: [{ type: "command", command: "lint" }],
+			checks: [{ type: "command", command: "test" }],
+		});
+		const prompt = buildSystemPrompt(config);
+		expect(prompt).toContain("fast check failure");
+		expect(prompt).toContain("check failure");
+		expect(prompt).toContain("5. Keep working");
+	});
+
+	test("each step line ends with a period", () => {
+		const config = makeConfig({
+			checksFast: [{ type: "command", command: "lint" }],
+			checks: [{ type: "command", command: "test" }],
+		});
+		const prompt = buildSystemPrompt(config);
+		const lines = prompt.split("\n");
+		for (let i = 1; i < lines.length; i++) {
+			const line = lines[i].trim();
+			if (line.startsWith("1.") || line.startsWith("2.") ||
+				line.startsWith("3.") || line.startsWith("4.") ||
+				line.startsWith("5.")) {
+				expect(line.endsWith(".")).toBe(true);
+			}
+		}
+	});
 });
 
 describe("findConfigDir", () => {

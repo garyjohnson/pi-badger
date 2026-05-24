@@ -9,9 +9,9 @@
  */
 
 import { spawn } from "node:child_process";
-import type { Component, TUI } from "@mariozechner/pi-tui";
-import type { Theme, ThemeColor } from "@mariozechner/pi-coding-agent";
-import { truncateToWidth, visibleWidth, matchesKey, Key } from "@mariozechner/pi-tui";
+import type { Component, TUI } from "@earendil-works/pi-tui";
+import type { Theme, ThemeColor } from "@earendil-works/pi-coding-agent";
+import { truncateToWidth, visibleWidth, matchesKey, Key } from "@earendil-works/pi-tui";
 
 // ---------------------------------------------------------------------------
 // Tail overlay component

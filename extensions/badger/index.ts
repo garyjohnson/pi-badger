@@ -11,7 +11,7 @@
  */
 
 import picomatch from "picomatch";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BadgerState } from "./types.js";
 import { loadConfig, findConfigDir, buildSystemPrompt, DEFAULT_FAST_FAILURE_PROMPT, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT, DEFAULT_CONFIG } from "./config.js";
 import { DebugLogger } from "./debug-logger.js";

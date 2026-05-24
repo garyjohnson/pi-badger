@@ -1,6 +1,6 @@
 import { describe, test, expect } from "bun:test";
 import { stripAnsi, TailOverlay } from "../extensions/badger/tail-overlay.js";
-import { visibleWidth, truncateToWidth } from "@mariozechner/pi-tui";
+import { visibleWidth, truncateToWidth } from "@earendil-works/pi-tui";
 
 describe("stripAnsi", () => {
 	test("strips SGR color codes", () => {

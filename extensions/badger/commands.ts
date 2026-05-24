@@ -5,7 +5,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import * as url from "node:url";
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import type { BadgerState, CheckEntry, RunResult } from "./types.js";
 import { loadConfig, saveConfig, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT } from "./config.js";
 import { formatSingleFailureMessage, formatMultiFailureMessage, type CheckFailure } from "./renderers.js";

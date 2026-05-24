@@ -2,16 +2,16 @@
  * Badger — Message renderers for TUI display
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { Text } from "@mariozechner/pi-tui";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 
 /** Coerce message.content to a plain string for regex matching. */
-function contentToString(content: string | (import("@mariozechner/pi-ai").TextContent | import("@mariozechner/pi-ai").ImageContent)[] | undefined): string {
+function contentToString(content: string | (import("@earendil-works/pi-ai").TextContent | import("@earendil-works/pi-ai").ImageContent)[] | undefined): string {
 	if (!content) return "";
 	if (typeof content === "string") return content;
 	// Array of content blocks — extract text from TextContent blocks
 	return content
-		.filter((block): block is import("@mariozechner/pi-ai").TextContent => block.type === "text")
+		.filter((block): block is import("@earendil-works/pi-ai").TextContent => block.type === "text")
 		.map((block) => block.text)
 		.join("\n");
 }

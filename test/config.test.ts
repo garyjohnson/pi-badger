@@ -1,7 +1,8 @@
 import { describe, test, expect, beforeEach, afterEach } from "bun:test";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { loadConfig, saveConfig, findConfigDir, DEFAULT_CONFIG } from "../extensions/badger/config.js";
+import { loadConfig, saveConfig, findConfigDir, DEFAULT_CONFIG, buildSystemPrompt } from "../extensions/badger/config.js";
+import type { BadgerConfig } from "../extensions/badger/types.js";
 import { createTempDir, writeBadgerConfig } from "./helpers.js";
 
 describe("loadConfig", () => {
@@ -20,7 +21,7 @@ describe("loadConfig", () => {
 		expect(result).toBeNull();
 	});
 
-	test("returns defaults when config is empty object", () => {
+	test("returns empty defaults when config is empty object", () => {
 		writeBadgerConfig(tmp.dir, {});
 		const result = loadConfig(tmp.dir);
 		expect(result).not.toBeNull();
@@ -28,9 +29,10 @@ describe("loadConfig", () => {
 		expect(result!.excludePatterns).toEqual(DEFAULT_CONFIG.excludePatterns);
 		expect(result!.debug).toBe(DEFAULT_CONFIG.debug);
 		expect(result!.fastFail).toBe(DEFAULT_CONFIG.fastFail);
-		expect(result!.checksFast).toEqual(DEFAULT_CONFIG.checksFast);
-		expect(result!.checks).toEqual(DEFAULT_CONFIG.checks);
-		expect(result!.release).toEqual(DEFAULT_CONFIG.release);
+		// checksFast, checks, release default to empty/null without hardcoded defaults
+		expect(result!.checksFast).toEqual([]);
+		expect(result!.checks).toEqual([]);
+		expect(result!.release).toBeNull();
 	});
 
 	test("merges partial user config with defaults", () => {
@@ -45,9 +47,10 @@ describe("loadConfig", () => {
 		// Defaults are preserved for unprovided fields
 		expect(result!.excludePatterns).toEqual(DEFAULT_CONFIG.excludePatterns);
 		expect(result!.fastFail).toBe(DEFAULT_CONFIG.fastFail);
-		expect(result!.checksFast).toEqual(DEFAULT_CONFIG.checksFast);
-		expect(result!.checks).toEqual(DEFAULT_CONFIG.checks);
-		expect(result!.release).toEqual(DEFAULT_CONFIG.release);
+		// checksFast, checks, release default to empty/null
+		expect(result!.checksFast).toEqual([]);
+		expect(result!.checks).toEqual([]);
+		expect(result!.release).toBeNull();
 	});
 
 	test("handles fastFail: false as explicitly disabled", () => {
@@ -71,11 +74,58 @@ describe("loadConfig", () => {
 		expect(result!.release).toBeNull();
 	});
 
-	test("handles release: undefined by using default", () => {
+	test("handles release: undefined by defaulting to null", () => {
 		writeBadgerConfig(tmp.dir, {});
 		const result = loadConfig(tmp.dir);
 		expect(result).not.toBeNull();
-		expect(result!.release).toEqual(DEFAULT_CONFIG.release);
+		expect(result!.release).toBeNull();
+	});
+
+	test("returns null for malformed JSON", () => {
+		const piDir = path.join(tmp.dir, ".pi");
+		fs.mkdirSync(piDir, { recursive: true });
+		fs.writeFileSync(path.join(piDir, "badger.json"), "{invalid json!!!");
+		const result = loadConfig(tmp.dir);
+		expect(result).toBeNull();
+	});
+
+	test("returns null for unreadable config", () => {
+		// Non-existent directory
+		const result = loadConfig("/nonexistent/path/that/does/not/exist");
+		expect(result).toBeNull();
+	});
+
+	test("preserves user config when checksFast, checks, and release are provided", () => {
+		const customChecksFast = [
+			{
+				type: "command" as const,
+				command: "npx eslint $CHANGED_FILES",
+				fileFilter: ["*.ts"],
+				failurePrompt: "Fix lint errors",
+			},
+		];
+		const customChecks = [
+			{
+				type: "command" as const,
+				command: "npx vitest run",
+				failurePrompt: "Fix test failures",
+			},
+		];
+		const customRelease = {
+			type: "command" as const,
+			command: "npm publish",
+			failurePrompt: "Release failed",
+		};
+		writeBadgerConfig(tmp.dir, {
+			checksFast: customChecksFast,
+			checks: customChecks,
+			release: customRelease,
+		});
+		const result = loadConfig(tmp.dir);
+		expect(result).not.toBeNull();
+		expect(result!.checksFast).toEqual(customChecksFast);
+		expect(result!.checks).toEqual(customChecks);
+		expect(result!.release).toEqual(customRelease);
 	});
 
 	test("returns null for malformed JSON", () => {
@@ -117,6 +167,7 @@ describe("loadConfig", () => {
 		expect(result!.checksFast).toEqual(customChecksFast);
 		expect(result!.checks).toEqual(customChecks);
 	});
+
 	test("finds config in parent directory when called from subdirectory", () => {
 		writeBadgerConfig(tmp.dir, { debug: true });
 		const subDir = path.join(tmp.dir, "src", "components");
@@ -125,11 +176,99 @@ describe("loadConfig", () => {
 		expect(result).not.toBeNull();
 		expect(result!.debug).toBe(true);
 	});
+
 	test("returns null when no config exists in current or parent directories", () => {
 		const subDir = path.join(tmp.dir, "src", "components");
 		fs.mkdirSync(subDir, { recursive: true });
 		const result = loadConfig(subDir);
 		expect(result).toBeNull();
+	});
+});
+
+describe("buildSystemPrompt", () => {
+	function makeConfig(overrides: Partial<BadgerConfig>): BadgerConfig {
+		return { ...DEFAULT_CONFIG, ...overrides };
+	}
+
+	test("includes fast check steps when checksFast is configured", () => {
+		const config = makeConfig({
+			checksFast: [{ type: "command", command: "lint" }],
+		});
+		const prompt = buildSystemPrompt(config);
+		expect(prompt).toContain("Badger fast check failure");
+		expect(prompt).toContain("Badger check failure");
+		expect(prompt).toContain("5. Keep working");
+	});
+
+	test("omits fast check steps when only checks are configured", () => {
+		const config = makeConfig({
+			checksFast: [],
+			checks: [{ type: "command", command: "test" }],
+		});
+		const prompt = buildSystemPrompt(config);
+		expect(prompt).not.toContain("fast check failure");
+		expect(prompt).toContain("Badger check failure");
+		expect(prompt).toContain("4. Keep working");
+	});
+
+	test("omits all check steps when neither checksFast nor checks are configured", () => {
+		const config = makeConfig({
+			checksFast: [],
+			checks: [],
+			release: null,
+		});
+		const prompt = buildSystemPrompt(config);
+		expect(prompt).not.toContain("fast check failure");
+		expect(prompt).not.toContain("check failure");
+		expect(prompt).toContain("2. Keep working");
+	});
+
+	test("starts with 'You are working with the Badger quality gate extension'", () => {
+		const config = makeConfig({});
+		const prompt = buildSystemPrompt(config);
+		expect(prompt).toStartWith("You are working with the Badger quality gate extension");
+	});
+
+	test("omits release-specific steps when only release is configured", () => {
+		const config = makeConfig({
+			checksFast: [],
+			checks: [],
+			release: { type: "command", command: "publish" },
+		});
+		const prompt = buildSystemPrompt(config);
+		// No fast checks or checks, so it falls to the minimal 2-step workflow
+		expect(prompt).not.toContain("fast check failure");
+		expect(prompt).not.toContain("check failure");
+		expect(prompt).not.toContain("test or release scripts");
+		expect(prompt).toContain("2. Keep working");
+	});
+
+	test("includes both fast and regular check steps when both arrays are populated", () => {
+		const config = makeConfig({
+			checksFast: [{ type: "command", command: "lint" }],
+			checks: [{ type: "command", command: "test" }],
+		});
+		const prompt = buildSystemPrompt(config);
+		expect(prompt).toContain("fast check failure");
+		expect(prompt).toContain("check failure");
+		expect(prompt).toContain("5. Keep working");
+	});
+
+	test("each step line ends with a period", () => {
+		const config = makeConfig({
+			checksFast: [{ type: "command", command: "lint" }],
+			checks: [{ type: "command", command: "test" }],
+		});
+		const prompt = buildSystemPrompt(config);
+		const lines = prompt.split("\n");
+		for (let i = 1; i < lines.length; i++) {
+			const line = lines[i].trim();
+			if (line.startsWith("1.") || line.startsWith("2.") ||
+				line.startsWith("3.") || line.startsWith("4.") ||
+				line.startsWith("5.")) {
+				expect(line.endsWith(".")).toBe(true);
+			}
+		}
 	});
 });
 

@@ -13,7 +13,7 @@
 import picomatch from "picomatch";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import type { BadgerState } from "./types.js";
-import { loadConfig, findConfigDir, SYSTEM_PROMPT, DEFAULT_FAST_FAILURE_PROMPT, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT, DEFAULT_CONFIG } from "./config.js";
+import { loadConfig, findConfigDir, buildSystemPrompt, DEFAULT_FAST_FAILURE_PROMPT, DEFAULT_CHECKS_FAILURE_PROMPT, DEFAULT_RELEASE_FAILURE_PROMPT, DEFAULT_CONFIG } from "./config.js";
 import { DebugLogger } from "./debug-logger.js";
 import { rebuildHashMap, diffHashMaps, diffFilePaths, summarizeHashMap } from "./file-watcher.js";
 import { runEntry, entryLabel } from "./runner.js";
@@ -122,13 +122,19 @@ export default function badgerExtension(pi: ExtensionAPI) {
 	pi.on("before_agent_start", async (event) => {
 		if (!state.config) return {};
 
-		debugLog.log("before_agent_start", "Injecting Badger system prompt");
+		const badgerPrompt = buildSystemPrompt(state.config);
+
+		debugLog.log("before_agent_start", "Injecting Badger system prompt", {
+			hasFastChecks: (state.config.checksFast?.length ?? 0) > 0,
+			hasChecks: (state.config.checks?.length ?? 0) > 0,
+			hasRelease: !!state.config.release,
+		});
 
 		return {
 			systemPrompt:
 				event.systemPrompt +
 				"\n\n## Badger Quality Gate\n\n" +
-				SYSTEM_PROMPT,
+				badgerPrompt,
 		};
 	});
 

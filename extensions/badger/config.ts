@@ -42,37 +42,9 @@ export const DEFAULT_CONFIG: BadgerConfig = {
 	tailLines: 0,
 	showTail: true,
 	fastFail: true,
-	checksFast: [
-		{
-			type: "script",
-			path: "scripts/lint",
-			fileFilter: ["*.ts", "*.tsx", "*.js", "*.jsx"],
-			failurePrompt: "Fix the lint issues identified above and continue working.",
-		},
-		{
-			type: "script",
-			path: "scripts/typecheck",
-			failurePrompt: "Fix the type errors identified above and continue working.",
-		},
-		{
-			type: "script",
-			path: "scripts/test_changed",
-			fileFilter: ["*.test.ts", "*.spec.ts", "*.test.js", "*.spec.js"],
-			failurePrompt: "Fix the test failures identified above and continue working.",
-		},
-	],
-	checks: [
-		{
-			type: "script",
-			path: "scripts/check",
-			failurePrompt: "Fix the test failures and continue working.",
-		},
-	],
-	release: {
-		type: "script",
-		path: "scripts/release",
-		failurePrompt: "The release failed. Review the errors above.",
-	},
+	checksFast: [],
+	checks: [],
+	release: null,
 };
 
 export const DEFAULT_FAST_FAILURE_PROMPT =
@@ -82,13 +54,34 @@ export const DEFAULT_CHECKS_FAILURE_PROMPT =
 export const DEFAULT_RELEASE_FAILURE_PROMPT =
 	"The release failed. Review the errors above.";
 
-export const SYSTEM_PROMPT = `You are working with the Badger quality gate extension. Follow this workflow:
+/**
+ * Build a Badger system prompt tailored to what the config has enabled.
+ */
+export function buildSystemPrompt(config: BadgerConfig): string {
+	const steps: string[] = [];
 
-1. Make your changes as requested.
-2. When you see a Badger fast check failure, fix the identified issues and continue.
-3. When you see a Badger check failure, fix the identified issues and continue.
-4. Do not run test or release scripts yourself — Badger runs them automatically.
-5. Keep working until Badger is satisfied or the user intervenes.`;
+	steps.push("You are working with the Badger quality gate extension. Follow this workflow:");
+
+	if (config.checksFast && config.checksFast.length > 0) {
+		steps.push("1. Make your changes as requested.");
+		steps.push("2. When you see a Badger fast check failure, fix the identified issues and continue.");
+		steps.push("3. When you see a Badger check failure, fix the identified issues and continue.");
+		steps.push("4. Do not run test or release scripts yourself — Badger runs them automatically.");
+		steps.push("5. Keep working until Badger is satisfied or the user intervenes.");
+	} else if (config.checks && config.checks.length > 0) {
+		steps.push("1. Make your changes as requested.");
+		steps.push("2. When you see a Badger check failure, fix the identified issues and continue.");
+		steps.push("3. Do not run test or release scripts yourself — Badger runs them automatically.");
+		steps.push("4. Keep working until Badger is satisfied or the user intervenes.");
+	} else {
+		steps.push("1. Make your changes as requested.");
+		steps.push("2. Keep working until Badger is satisfied or the user intervenes.");
+	}
+
+	return steps.join("\n");
+}
+
+export const SYSTEM_PROMPT = buildSystemPrompt(DEFAULT_CONFIG);
 
 // ---------------------------------------------------------------------------
 // Config loading
@@ -148,7 +141,7 @@ export function loadConfig(cwd: string): BadgerConfig | null {
 		fastFail: parsed.fastFail ?? DEFAULT_CONFIG.fastFail,
 		checksFast: parsed.checksFast ?? DEFAULT_CONFIG.checksFast,
 		checks: parsed.checks ?? DEFAULT_CONFIG.checks,
-		release: parsed.release === null ? null : (parsed.release ?? DEFAULT_CONFIG.release),
+		release: parsed.release === undefined ? null : parsed.release,
 	};
 }
 
